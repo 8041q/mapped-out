@@ -557,7 +557,7 @@ function adjustHotspots() {
         // Scale radius in pixels then convert to viewBox units
         // On coarse-pointer (touch) devices the visual circles are doubled for easier tapping
         const isCoarsePointer = window.matchMedia('(pointer: coarse)').matches;
-        const baseRadiusPx = 9 * (isCoarsePointer ? 0.9 : 1.0);
+        const baseRadiusPx = 9 * (isCoarsePointer ? 0.8 : 1.0);
         const scalingFactor = 0.3;
         const scaledRadiusPx = baseRadiusPx * (1 + (zoomLevel - 1) * scalingFactor);
         const newRadiusVB = scaledRadiusPx * vbUnitsPerPixel;
@@ -609,7 +609,7 @@ function showPopup(d, circleEl, evt) {
             .style('stroke', 'rgb(255, 50, 50)');
     }
 
-    _popup.classed('open', false);
+    _popup.classed('open', false).classed('popup--cluster', false);
 
     // Normalise image source: prefer images[] array, fall back to legacy imageUrl
     const imgs = d.images || (d.imageUrl ? [d.imageUrl] : []);
@@ -696,7 +696,7 @@ function showClusterPopup(clusterData, circleEl, evt) {
         .style('fill', 'rgba(0, 130, 220, 0.85)')
         .style('stroke', 'rgb(0, 90, 200)');
 
-    _popup.classed('open', false);
+    _popup.classed('open', false).classed('popup--cluster', true);
 
     let content = `<strong>${clusterData.members.length} nearby hospitals</strong>`;
     content += `<ul class="popup-cluster-list">`;

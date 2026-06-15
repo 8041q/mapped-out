@@ -173,19 +173,50 @@ svg {
 }
 
 /* Cluster list popup */
+.popup--cluster > strong {
+    display: block;
+    font-size: 11px;
+    font-weight: 600;
+    letter-spacing: 0.07em;
+    text-transform: uppercase;
+    color: #999;
+    padding-bottom: 8px;
+    border-bottom: 1px solid rgba(0,0,0,0.07);
+    margin-bottom: 4px;
+}
+
 .popup-cluster-list {
     list-style: none;
-    margin: 8px 0 0;
+    margin: 4px -2px 0;
     padding: 0;
 }
 .popup-cluster-list li {
-    padding: 6px 8px;
+    padding: 7px 10px;
     cursor: pointer;
-    border-radius: 4px;
-    font-size: 13px;
+    border-radius: 6px;
+    font-size: 13.5px;
+    color: #222;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    transition: background 120ms ease, color 120ms ease;
+    -webkit-font-smoothing: antialiased;
+}
+.popup-cluster-list li::after {
+    content: '\203A';
+    font-size: 17px;
+    line-height: 1;
+    color: #c0c0c0;
+    flex-shrink: 0;
+    margin-left: 8px;
+    transition: color 120ms ease;
 }
 .popup-cluster-list li:hover {
-    background: rgba(0, 0, 0, 0.06);
+    background: rgba(0, 100, 220, 0.09);
+    color: #005ee0;
+}
+.popup-cluster-list li:hover::after {
+    color: #005ee0;
 }
 
 /* Province tooltip (follows cursor) */
@@ -420,6 +451,11 @@ svg {
         box-shadow: 0 12px 36px rgba(0,0,0,0.14);
     }
     .popup::after { display: none; }
+
+    .popup-cluster-list li {
+        padding: 10px 10px;
+        font-size: 15px;
+    }
 
     .landing-heading { font-size: 1.5rem; }
     .landing-grid { grid-template-columns: 1fr; }
