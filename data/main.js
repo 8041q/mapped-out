@@ -548,9 +548,9 @@ function positionPopup(circleEl, evt) {
         if (x + rect.width > window.innerWidth - 20) {
             x = evt.pageX - rect.width - 16;
         }
-        if (y < 20) y = 20;
-        if (y + rect.height > window.innerHeight - 20) {
-            y = window.innerHeight - rect.height - 20;
+        if (y < window.scrollY + 20) y = window.scrollY + 20;
+        if (y + rect.height > window.scrollY + window.innerHeight - 20) {
+            y = window.scrollY + window.innerHeight - rect.height - 20;
         }
 
         popup.style.setProperty('--popup-left', x + 'px');
