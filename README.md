@@ -8,6 +8,8 @@ A lightweight, hash-routed web app for displaying interactive maps with project 
 - **Hash-based routing** – Navigate between maps using URL hashes (e.g., `#thailand`)
 - **Landing page** – Automatically generated card grid from your map catalog
 - **Interactive hotspots** – Click to see project details with photos
+- **Cluster markers** – Nearby hotspots automatically merge into a single circle showing a count. Click the circle to see all locations, then click a name to open its detail popup
+- **Image carousel** – Add multiple photos to any hotspot and the popup shows ← → navigation buttons automatically
 - **Zoom & pan** – Ctrl/Cmd + scroll to zoom, drag to pan
 - **Search** – Find provinces/regions with autocomplete suggestions
 - **Responsive** – Works on desktop, tablet, and mobile
@@ -105,6 +107,60 @@ const MAP_CATALOG = {
     }
 };
 ```
+
+## Hotspot Features
+
+### Cluster Markers
+
+Hotspots that are close together on the map are automatically grouped into a single blue circle with a number badge - no extra configuration needed.
+
+**How it works:**
+- On page load, every hotspot is checked against its neighbours
+- Any two hotspots within **8 SVG units** of each other are merged into one cluster circle
+- The badge shows how many locations are inside
+
+**Interaction:**
+1. Hover the cluster circle → a tooltip shows e.g. *"4 nearby hospitals"*
+2. Click the cluster circle → a popup lists all the hospital names
+3. Click a name → the normal detail popup opens for that location
+
+**Adjusting the threshold:**
+
+Open `data/main.js` and change this constant near the top of the hotspot section:
+
+```javascript
+const CLUSTER_THRESHOLD_VB = 8;  // increase to group more aggressively, decrease to split them up
+```
+
+---
+
+### Multiple Images (Carousel)
+
+Any hotspot can show more than one photo. When two or more images are listed the popup automatically adds ← → buttons and a counter (*"1 / 3"*). Single-image hotspots using the existing `imageUrl` field are completely unaffected.
+
+```javascript
+// Before - single image, no arrows
+{
+    title: 'Kumphawapi Hospital',
+    imageUrl: 'images/thailand/udon_thani.jpg',
+    x: 382.822, y: 231.766
+}
+
+// After - carousel with three photos, arrows appear automatically
+{
+    title: 'Kumphawapi Hospital',
+    images: [
+        'images/thailand/udon_thani.jpg',
+        'images/thailand/udon_thani_ward.jpg',
+        'images/thailand/udon_thani_equipment.jpg'
+    ],
+    x: 382.822, y: 231.766
+}
+```
+
+> **Note:** If both `images` and `imageUrl` are present on the same entry, `images` takes priority. You can keep `imageUrl` while you add photos gradually.
+
+---
 
 ## SVG Map Requirements
 
