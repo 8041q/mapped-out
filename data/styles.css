@@ -124,6 +124,70 @@ svg {
     stroke: rgb(200,0,0);
 }
 
+/* Cluster badge text (rendered inside the cluster circle) */
+.hotspot-cluster-label {
+    fill: #fff;
+    font-weight: 700;
+    pointer-events: none;
+    text-anchor: middle;
+    dominant-baseline: central;
+}
+
+/* Carousel wrapper */
+.popup-carousel {
+    position: relative;
+    display: block;
+    margin-bottom: 8px;
+}
+.popup-carousel img {
+    margin-bottom: 0;
+}
+.popup-carousel-btn {
+    position: absolute;
+    top: 50%;
+    transform: translateY(-50%);
+    background: rgba(0, 0, 0, 0.45);
+    color: #fff;
+    border: none;
+    border-radius: 50%;
+    width: 28px;
+    height: 28px;
+    cursor: pointer;
+    font-size: 15px;
+    line-height: 1;
+    z-index: 1;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+}
+.popup-carousel-btn:hover {
+    background: rgba(0, 0, 0, 0.65);
+}
+.popup-prev { left: 6px; }
+.popup-next { right: 6px; }
+.popup-carousel-counter {
+    text-align: center;
+    font-size: 11px;
+    color: #888;
+    margin: 4px 0 8px;
+}
+
+/* Cluster list popup */
+.popup-cluster-list {
+    list-style: none;
+    margin: 8px 0 0;
+    padding: 0;
+}
+.popup-cluster-list li {
+    padding: 6px 8px;
+    cursor: pointer;
+    border-radius: 4px;
+    font-size: 13px;
+}
+.popup-cluster-list li:hover {
+    background: rgba(0, 0, 0, 0.06);
+}
+
 /* Province tooltip (follows cursor) */
 .tooltip {
     position: absolute;

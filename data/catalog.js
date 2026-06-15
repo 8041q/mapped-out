@@ -53,7 +53,8 @@ const MAP_CATALOG = {
                 description: 'Public general and tertiary referral hospital with 1,435 beds. Saikang supplied medical trolleys to support clinical operations.',
                 x: 216.493,
                 y: 472.861,
-                imageUrl: 'images/thailand/bangkok_chu.jpg'
+                imageUrl: 'images/thailand/bangkok_chu.jpg',
+                images: ['images/thailand/bangkok_chu.jpg', 'images/thailand/udon_thani.jpg'] // demo carousel — replace 2nd entry with a real additional image
             },
                         {
                 provinceId: 'TH-10',

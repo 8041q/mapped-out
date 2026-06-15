@@ -12,6 +12,7 @@ let _states = null;        // d3 selection of province paths
 let _tooltip = null;       // tooltip <div>
 let _popup = null;         // popup <div>
 let _activeHotspot = null;
+let _popupHovered = false;
 let _popupPending = false;
 let _popupLastEvent = null;
 let _popupRectCached = null;
@@ -88,7 +89,7 @@ function teardownMap() {
 
     // Reset state
     _svg = null; _states = null; _activeHotspot = null;
-    _popupPending = false; _popupLastEvent = null; _popupRectCached = null;
+    _popupHovered = false; _popupPending = false; _popupLastEvent = null; _popupRectCached = null;
     _hotspotBaseRadiusVB = null; _hotspotBaseStrokeVB = null;
     _hotspotBaseStrokePx = null; _hotspotFullVBWidth = 1;
     _stateBaseStrokeVB = null; _zoomState = null;
@@ -179,6 +180,9 @@ async function loadMap(slug) {
 
     // Build popup
     _popup = d3.select('body').append('div').attr('class', 'popup');
+    _popup
+        .on('mouseenter', () => { _popupHovered = true; })
+        .on('mouseleave', () => { _popupHovered = false; hidePopup(); });
 
     // Store the initial viewBox to calculate scaling; create one if missing
     let vbAttr = svg.attr('viewBox');
@@ -389,7 +393,39 @@ function initProvinceInteractions(states, tooltip, popup, signal) {
         });
 }
 
-// initHotspots: create circle elements for hotspots
+// Proximity threshold (SVG viewBox units) — hotspots within this distance are merged into a cluster
+const CLUSTER_THRESHOLD_VB = 8;
+
+// clusterHotspots: group nearby hotspots into cluster objects using greedy proximity
+function clusterHotspots(hotspots, threshold) {
+    const used = new Set();
+    const result = [];
+    for (let i = 0; i < hotspots.length; i++) {
+        if (used.has(i)) continue;
+        const root = hotspots[i];
+        const members = [root];
+        used.add(i);
+        for (let j = i + 1; j < hotspots.length; j++) {
+            if (used.has(j)) continue;
+            const dx = root.x - hotspots[j].x;
+            const dy = root.y - hotspots[j].y;
+            if (Math.sqrt(dx * dx + dy * dy) <= threshold) {
+                members.push(hotspots[j]);
+                used.add(j);
+            }
+        }
+        if (members.length === 1) {
+            result.push({ type: 'single', data: members[0] });
+        } else {
+            const cx = members.reduce((s, m) => s + m.x, 0) / members.length;
+            const cy = members.reduce((s, m) => s + m.y, 0) / members.length;
+            result.push({ type: 'cluster', x: cx, y: cy, members });
+        }
+    }
+    return result;
+}
+
+// initHotspots: create circle elements for hotspots, with proximity clustering
 function initHotspots(svg, states, hotspots, tooltip, popup, signal) {
     if (!hotspots || !hotspots.length) { _hotspotsInitialized = true; return; }
 
@@ -401,39 +437,80 @@ function initHotspots(svg, states, hotspots, tooltip, popup, signal) {
     _hotspotBaseRadiusVB = 1;
     _hotspotBaseStrokePx = 1;
 
-    const circles = layer.selectAll('circle.hotspot').data(hotspots);
+    const renderItems = clusterHotspots(hotspots, CLUSTER_THRESHOLD_VB);
 
-    circles.enter()
-        .append('circle')
-        .attr('class', 'hotspot')
-        .attr('cx', d => d.x)
-        .attr('cy', d => d.y)
+    const groups = layer.selectAll('g.hotspot-group')
+        .data(renderItems)
+        .enter()
+        .append('g')
+        .attr('class', 'hotspot-group');
+
+    // Circle for every render item (single or cluster)
+    const circles = groups.append('circle')
+        .attr('class', d => d.type === 'cluster' ? 'hotspot hotspot--cluster' : 'hotspot')
+        .attr('cx', d => d.type === 'cluster' ? d.x : d.data.x)
+        .attr('cy', d => d.type === 'cluster' ? d.y : d.data.y)
         .attr('r', _hotspotBaseRadiusVB)
-        .style('fill', 'rgba(215, 38, 61, 0.65)')
-        .style('stroke', 'rgb(200, 0, 0)')
+        .style('fill', d => d.type === 'cluster' ? 'rgba(0, 90, 180, 0.75)' : 'rgba(215, 38, 61, 0.65)')
+        .style('stroke', d => d.type === 'cluster' ? 'rgb(0, 60, 140)' : 'rgb(200, 0, 0)')
         .style('vector-effect', 'non-scaling-stroke')
         .style('cursor', 'pointer')
-        .style('pointer-events', 'auto')
+        .style('pointer-events', 'auto');
+
+    // Count badge for cluster items
+    groups.filter(d => d.type === 'cluster')
+        .append('text')
+        .attr('class', 'hotspot-cluster-label')
+        .attr('x', d => d.x)
+        .attr('y', d => d.y)
+        .attr('text-anchor', 'middle')
+        .attr('dominant-baseline', 'central')
+        .style('pointer-events', 'none')
+        .text(d => d.members.length);
+
+    circles
         .on('mouseenter', function (event, d) {
-            d3.select(this)
-                .style('fill', 'rgba(255, 0, 0, 0.55)')
-                .style('stroke', 'rgb(255, 0, 0)');
-            // show popup on hover
-            showPopup(d, this, event);
+            if (d.type === 'cluster') {
+                // Highlight on hover — popup opens on click only
+                d3.select(this)
+                    .style('fill', 'rgba(0, 130, 220, 0.85)')
+                    .style('stroke', 'rgb(0, 90, 200)');
+                // Show a brief hint only when the list popup isn't already open
+                if (_activeHotspot !== this) {
+                    _tooltip
+                        .text(`${d.members.length} nearby hospitals`)
+                        .style('left', (event.pageX + 14) + 'px')
+                        .style('top', (event.pageY - 28) + 'px')
+                        .style('opacity', 1);
+                }
+            } else {
+                d3.select(this)
+                    .style('fill', 'rgba(255, 0, 0, 0.55)')
+                    .style('stroke', 'rgb(255, 0, 0)');
+                showPopup(d.data, this, event);
+            }
         })
         .on('mouseleave', function (event, d) {
             if (_activeHotspot !== this) {
+                const isCluster = d3.select(this).classed('hotspot--cluster');
                 d3.select(this)
-                    .style('fill', 'rgba(215, 38, 61, 0.65)')
-                    .style('stroke', 'rgb(200, 0, 0)');
+                    .style('fill', isCluster ? 'rgba(0, 90, 180, 0.75)' : 'rgba(215, 38, 61, 0.65)')
+                    .style('stroke', isCluster ? 'rgb(0, 60, 140)' : 'rgb(200, 0, 0)');
             }
-            // hide popup on mouse leave
-            hidePopup();
+            // Cluster popup was opened by click — let it persist until dismissed
+            if (d.type === 'cluster') {
+                _tooltip.style('opacity', 0);
+            } else {
+                hidePopup();
+            }
         })
         .on('click', function (event, d) {
             event.stopPropagation();
-            // Clicking can still show the popup (keeps it visible)
-            showPopup(d, this, event);
+            if (d.type === 'cluster') {
+                showClusterPopup(d, this, event);
+            } else {
+                showPopup(d.data, this, event);
+            }
         });
 
     _hotspotsInitialized = true;
@@ -476,37 +553,148 @@ function adjustHotspots() {
             .style('stroke-width', targetStrokePx + 'px')
             .style('vector-effect', 'non-scaling-stroke');
 
+        // Cluster circles slightly larger than singles
+        _svg.selectAll('circle.hotspot--cluster')
+            .attr('r', newRadiusVB * 1.3);
+
+        // Badge text scales proportionally with the circle radius
+        _svg.selectAll('text.hotspot-cluster-label')
+            .attr('font-size', newRadiusVB);
+
     } catch (e) {
         console.error('adjustHotspots error:', e);
     }
 }
 
-// showPopup: display popup for hotspot
+// showPopup: display popup for a single hotspot, with carousel support for multiple images
 function showPopup(d, circleEl, evt) {
     if (!_popup || _popupPending) return;
     _popupPending = true;
     _popupLastEvent = evt;
 
+    // Reset the previously active hotspot before switching
+    if (_activeHotspot && _activeHotspot !== circleEl) {
+        const wasCluster = d3.select(_activeHotspot).classed('hotspot--cluster');
+        d3.select(_activeHotspot)
+            .style('fill', wasCluster ? 'rgba(0, 90, 180, 0.75)' : 'rgba(215, 38, 61, 0.65)')
+            .style('stroke', wasCluster ? 'rgb(0, 60, 140)' : 'rgb(200, 0, 0)');
+    }
     _activeHotspot = circleEl;
-    d3.select(circleEl)
-        .style('fill', 'rgba(255, 0, 0, 0.65)')
-        .style('stroke', 'rgb(255, 50, 50)');
+
+    // Only apply red highlight for solo hotspots; cluster circle keeps its own active colour
+    if (!d3.select(circleEl).classed('hotspot--cluster')) {
+        d3.select(circleEl)
+            .style('fill', 'rgba(255, 0, 0, 0.65)')
+            .style('stroke', 'rgb(255, 50, 50)');
+    }
 
     _popup.classed('open', false);
 
-    let content = `<strong>${d.title || 'Hotspot'}</strong>`;
-    if (d.description) content += `<p>${d.description}</p>`;
+    // Normalise image source: prefer images[] array, fall back to legacy imageUrl
+    const imgs = d.images || (d.imageUrl ? [d.imageUrl] : []);
+    const hasCarousel = imgs.length > 1;
+
+    let textContent = `<strong>${d.title || 'Hotspot'}</strong>`;
+    if (d.description) textContent += `<p>${d.description}</p>`;
+
+    if (hasCarousel) {
+        _popup.html(
+            `<div class="popup-carousel">` +
+            `<img src="" alt="">` +
+            `<button class="popup-carousel-btn popup-prev" aria-label="Previous">&#8592;</button>` +
+            `<button class="popup-carousel-btn popup-next" aria-label="Next">&#8594;</button>` +
+            `</div>` +
+            `<div class="popup-carousel-counter"></div>` +
+            textContent
+        );
+
+        let idx = 0;
+        const imgEl = _popup.select('.popup-carousel img');
+        const counter = _popup.select('.popup-carousel-counter');
+
+        function updateCarousel() {
+            imgEl.style('opacity', 0).style('transform', 'translateY(6px)');
+            const src = imgs[idx];
+            const loader = new Image();
+            loader.onload = () => {
+                imgEl.attr('src', src).style('opacity', 1).style('transform', 'translateY(0)');
+            };
+            loader.src = src;
+            counter.text(`${idx + 1} / ${imgs.length}`);
+        }
+
+        _popup.select('.popup-prev').on('click', function (e) {
+            e.stopPropagation();
+            idx = (idx - 1 + imgs.length) % imgs.length;
+            updateCarousel();
+        });
+        _popup.select('.popup-next').on('click', function (e) {
+            e.stopPropagation();
+            idx = (idx + 1) % imgs.length;
+            updateCarousel();
+        });
+
+        updateCarousel();
+    } else {
+        _popup.html(textContent);
+
+        if (imgs.length === 1) {
+            const img = new Image();
+            img.onload = function () {
+                _popup.select('img').style('opacity', 1).style('transform', 'translateY(0)');
+            };
+            img.src = imgs[0];
+            _popup.insert('img', ':first-child').attr('src', imgs[0]).attr('alt', d.title || '');
+        }
+    }
+
+    requestAnimationFrame(() => {
+        positionPopup(circleEl, evt);
+        requestAnimationFrame(() => {
+            _popup.classed('open', true);
+            _popupPending = false;
+        });
+    });
+}
+
+// showClusterPopup: display a list popup for a cluster of nearby hotspots
+function showClusterPopup(clusterData, circleEl, evt) {
+    if (!_popup || _popupPending) return;
+    _popupPending = true;
+    _popupLastEvent = evt;
+
+    // Reset the previously active hotspot before switching
+    if (_activeHotspot && _activeHotspot !== circleEl) {
+        const wasCluster = d3.select(_activeHotspot).classed('hotspot--cluster');
+        d3.select(_activeHotspot)
+            .style('fill', wasCluster ? 'rgba(0, 90, 180, 0.75)' : 'rgba(215, 38, 61, 0.65)')
+            .style('stroke', wasCluster ? 'rgb(0, 60, 140)' : 'rgb(200, 0, 0)');
+    }
+    _activeHotspot = circleEl;
+    d3.select(circleEl)
+        .style('fill', 'rgba(0, 130, 220, 0.85)')
+        .style('stroke', 'rgb(0, 90, 200)');
+
+    _popup.classed('open', false);
+
+    let content = `<strong>${clusterData.members.length} nearby hospitals</strong>`;
+    content += `<ul class="popup-cluster-list">`;
+    clusterData.members.forEach((m, i) => {
+        content += `<li data-member-idx="${i}">${m.title}</li>`;
+    });
+    content += `</ul>`;
 
     _popup.html(content);
 
-    if (d.imageUrl) {
-        const img = new Image();
-        img.onload = function () {
-            _popup.select('img').style('opacity', 1).style('transform', 'translateY(0)');
-        };
-        img.src = d.imageUrl;
-        _popup.insert('img', ':first-child').attr('src', d.imageUrl).attr('alt', d.title || '');
-    }
+    // Bind click handlers to list items — clicking a name drills into the individual popup
+    _popup.selectAll('.popup-cluster-list li').each(function () {
+        const li = this;
+        d3.select(li).on('click', function (e) {
+            e.stopPropagation();
+            const idx = +li.dataset.memberIdx;
+            showPopup(clusterData.members[idx], circleEl, e);
+        });
+    });
 
     requestAnimationFrame(() => {
         positionPopup(circleEl, evt);
@@ -561,18 +749,18 @@ function positionPopup(circleEl, evt) {
 // hidePopup: close popup and clear active hotspot
 function hidePopup() {
     if (!_popup) return;
-    
-    // Close the popup
+    if (_popupHovered) return;
+
     _popup.classed('open', false);
-    
-    // Reset the active hotspot styling
+
     if (_activeHotspot) {
+        const isCluster = d3.select(_activeHotspot).classed('hotspot--cluster');
         d3.select(_activeHotspot)
-            .style('fill', 'rgba(215, 38, 61, 0.65)')
-            .style('stroke', 'rgb(200, 0, 0)');
+            .style('fill', isCluster ? 'rgba(0, 90, 180, 0.75)' : 'rgba(215, 38, 61, 0.65)')
+            .style('stroke', isCluster ? 'rgb(0, 60, 140)' : 'rgb(200, 0, 0)');
         _activeHotspot = null;
     }
-    
+
     _popupPending = false;
 }
 
