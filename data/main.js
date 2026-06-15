@@ -636,8 +636,8 @@ function initZoom(svg, signal) {
     function clampToFull(candidate) {
         const [x, y, w, h] = candidate;
         const [fx, fy, fw, fh] = fullVB;
-        const minW = fw * 0.3;
-        const minH = fh * 0.3;
+        const minW = fw * 0.1;
+        const minH = fh * 0.1;
         let nw = Math.max(minW, Math.min(w, fw));
         let nh = Math.max(minH, Math.min(h, fh));
         let nx = Math.max(fx, Math.min(x, fx + fw - nw));
