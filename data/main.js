@@ -557,7 +557,7 @@ function adjustHotspots() {
         // Scale radius in pixels then convert to viewBox units
         // On coarse-pointer (touch) devices the visual circles are doubled for easier tapping
         const isCoarsePointer = window.matchMedia('(pointer: coarse)').matches;
-        const baseRadiusPx = 6 * (isCoarsePointer ? 2.0 : 1.0);
+        const baseRadiusPx = 6 * (isCoarsePointer ? 1.5 : 1.0);
         const scalingFactor = 0.3;
         const scaledRadiusPx = baseRadiusPx * (1 + (zoomLevel - 1) * scalingFactor);
         const newRadiusVB = scaledRadiusPx * vbUnitsPerPixel;
@@ -579,7 +579,7 @@ function adjustHotspots() {
 
         // Hit rings stay 3× the visual radius so they scale in sync
         _svg.selectAll('circle.hotspot-hit').attr('r', function(d) {
-            return d.type === 'cluster' ? newRadiusVB * 1.3 * 3 : newRadiusVB * 3;
+            return d.type === 'cluster' ? newRadiusVB * 1.3 * 2 : newRadiusVB * 2;
         });
 
     } catch (e) {
