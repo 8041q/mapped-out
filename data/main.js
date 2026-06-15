@@ -557,7 +557,7 @@ function adjustHotspots() {
         // Scale radius in pixels then convert to viewBox units
         // On coarse-pointer (touch) devices the visual circles are doubled for easier tapping
         const isCoarsePointer = window.matchMedia('(pointer: coarse)').matches;
-        const baseRadiusPx = 9 * (isCoarsePointer ? 0.8 : 1.0);
+        const baseRadiusPx = 9 * (isCoarsePointer ? 0.85 : 1.0);
         const scalingFactor = 0.3;
         const scaledRadiusPx = baseRadiusPx * (1 + (zoomLevel - 1) * scalingFactor);
         const newRadiusVB = scaledRadiusPx * vbUnitsPerPixel;

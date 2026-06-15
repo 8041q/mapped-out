@@ -37,7 +37,14 @@ const MAP_CATALOG = {
                 description: '180-bed hospital. Saikang supplied hospital beds, bedside tables and overbed tables for new wards.',
                 x: 382.822,
                 y: 231.766,
-                imageUrl: 'images/thailand/udon_thani.jpg'
+                imageUrl: 'images/thailand/udon_kum/udon_thani.jpg',
+                images: ['images/thailand/udon_kum/udon_thani.jpg',
+                    'images/thailand/udon_kum/#1.png',
+                    'images/thailand/udon_kum/#2.png',
+                    'images/thailand/udon_kum/#3.png',
+                    'images/thailand/udon_kum/#4.png',
+                    'images/thailand/udon_kum/#5.png',
+                ]
             },
             {
                 provinceId: 'TH-36',
@@ -53,8 +60,10 @@ const MAP_CATALOG = {
                 description: 'Public general and tertiary referral hospital with 1,435 beds. Saikang supplied medical trolleys to support clinical operations.',
                 x: 216.493,
                 y: 472.861,
-                imageUrl: 'images/thailand/bangkok_chu.jpg',
-                images: ['images/thailand/bangkok_chu.jpg', 'images/thailand/udon_thani.jpg'] // demo carousel — replace 2nd entry with a real additional image
+                imageUrl: 'images/thailand/bangkok_king-chu/bangkok_chu.jpg',
+                images: ['images/thailand/bangkok_king-chu/bangkok_chu.jpg',
+                    'images/thailand/bangkok_king-chu/#1.png',
+                    'images/thailand/bangkok_king-chu/#2.png']
             },
                         {
                 provinceId: 'TH-10',
@@ -62,7 +71,9 @@ const MAP_CATALOG = {
                 description: 'A police hospital for the Royal Thai Police, equipped with the Saikang hospital beds of CDB6s.',
                 x: 218.993,
                 y: 469.261,
-                imageUrl: 'images/thailand/police_hospital.jpg'
+                images: ['images/thailand/bangkok_policeGen/#1.png',
+                    'images/thailand/bangkok_policeGen/#2.png',
+                    'images/thailand/bangkok_policeGen/#3.png']
             },
             {
                 provinceId: 'TH-10',
@@ -70,7 +81,8 @@ const MAP_CATALOG = {
                 description: 'Private hospital group. 6 pcs medical trolleys are used in their pediatric department and OB rooms.',
                 x: 216.093,
                 y: 469.861,
-                imageUrl: 'images/thailand/phyathai.jpg'
+                images: ['images/thailand/bangkok_phyathai/#1.jpeg',
+                    'images/thailand/bangkok_phyathai/#2.jpeg']
             },
             {
                 provinceId: 'TH-10',
@@ -78,7 +90,8 @@ const MAP_CATALOG = {
                 description: 'Public hospital, 25 pcs medical trolleys used in this hospital.',
                 x: 219.493,
                 y: 472.061,
-                imageUrl: 'images/thailand/chulalongkorn_hp.jpg'
+                images: ['images/thailand/bangkok_chuHP/#1.jpeg',
+                    'images/thailand/bangkok_chuHP/#2.jpeg']
             },
             {
                 provinceId: 'TH-10',
@@ -86,7 +99,9 @@ const MAP_CATALOG = {
                 description: 'Nursing home and rehabilitation center using Saikang electric beds to ensure daily safety and care for the elderly.',
                 x: 225,
                 y: 472,
-                imageUrl: 'images/thailand/bangkok_bless.jpg'
+                images: ['images/thailand/bangkok_bless/bangkok_bless.jpg',
+                    'images/thailand/bangkok_bless/#1.png',
+                    'images/thailand/bangkok_bless/#2.png']
             },
             {
                 provinceId: 'TH-81',
@@ -94,7 +109,8 @@ const MAP_CATALOG = {
                 description: 'Multispecialty hospital using Saikang electric beds and accessories to support patient care.',
                 x: 128,
                 y: 870,
-                imageUrl: 'images/thailand/krabi.jpg'
+                images: ['images/thailand/krabi_khlong/krabi.jpg',
+                    'images/thailand/krabi_khlong/#1.png']
             },
             {
                 provinceId: 'TH-43',
@@ -102,7 +118,10 @@ const MAP_CATALOG = {
                 description: 'In Nong Khai, primary health services are delivered by 74 sub-district health promoting hospitals (SHPHs) operated by the Ministry of Public Health rather than a single center. These hospitals provide maternal, elderly, and chronic disease care under Thailand\'s Universal Coverage Scheme. Saikang supplied 180 pcs of V3v manual hospital beds for these centers.',
                 x: 364.246,
                 y: 185.112,
-                imageUrl: 'images/thailand/nong_khai.jpg'
+                images: ['images/thailand/nong_subHealth/#1.jpeg',
+                    'images/thailand/nong_subHealth/#2.jpeg',
+                    'images/thailand/nong_subHealth/#3.jpeg',
+                    'images/thailand/nong_subHealth/#4.jpeg',]
             },
             {
                 provinceId: 'TH-30',
@@ -110,7 +129,10 @@ const MAP_CATALOG = {
                 description: 'Thai Red Cross project. 18 pcs dialysis chairs SRT-136 used in their organisation.',
                 x: 324.532,
                 y: 385.677,
-                imageUrl: 'images/thailand/nakhon_ratchasima.jpg'
+                images: ['images/thailand/nakhon_redCross/#1.jpeg',
+                    'images/thailand/nakhon_redCross/#2.jpeg',
+                    'images/thailand/nakhon_redCross/#3.jpeg',
+                    'images/thailand/nakhon_redCross/#4.jpeg',]
             },
             {
                 provinceId: 'TH-73',
@@ -118,7 +140,8 @@ const MAP_CATALOG = {
                 description: 'Private hospital. 4 pcs patient trolley SKM11-1 used in this hospital.',
                 x: 186.093,
                 y: 454.845,
-                imageUrl: 'images/thailand/dontu.jpg'
+                images: ['images/thailand/nakhon_dontu/#1.jpeg',
+                    'images/thailand/nakhon_redCross/#2.jpeg']
             },
             {
                 provinceId: 'TH-40',
@@ -126,7 +149,8 @@ const MAP_CATALOG = {
                 description: 'Private Hospital, 145 pcs manual bed two cranks K2k used in this hospital.',
                 x: 371.629,
                 y: 282.101,
-                imageUrl: 'images/thailand/nakhon_phanom_admin.jpg'
+                images: ['images/thailand/nakhon_phanom/chaiyaphum.jpg',
+                    'images/thailand/nakhon_redCross/#1.jpeg']
             }
         ]
     }
