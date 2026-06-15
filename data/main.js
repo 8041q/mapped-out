@@ -14,6 +14,7 @@ let _popup = null;         // popup <div>
 let _activeHotspot = null;
 let _popupHovered = false;
 let _popupPending = false;
+let _hotspotPinned = false;  // true after clicking a single hotspot — keeps popup open on mouseleave
 let _popupLastEvent = null;
 let _popupRectCached = null;
 let _hotspotBaseRadiusVB = null;
@@ -89,7 +90,7 @@ function teardownMap() {
 
     // Reset state
     _svg = null; _states = null; _activeHotspot = null;
-    _popupHovered = false; _popupPending = false; _popupLastEvent = null; _popupRectCached = null;
+    _popupHovered = false; _popupPending = false; _hotspotPinned = false; _popupLastEvent = null; _popupRectCached = null;
     _hotspotBaseRadiusVB = null; _hotspotBaseStrokeVB = null;
     _hotspotBaseStrokePx = null; _hotspotFullVBWidth = 1;
     _stateBaseStrokeVB = null; _zoomState = null;
@@ -513,7 +514,7 @@ function initHotspots(svg, states, hotspots, tooltip, popup, signal) {
             // Cluster popup was opened by click — let it persist until dismissed
             if (d.type === 'cluster') {
                 _tooltip.style('opacity', 0);
-            } else {
+            } else if (!_hotspotPinned) {
                 hidePopup();
             }
         })
@@ -523,6 +524,7 @@ function initHotspots(svg, states, hotspots, tooltip, popup, signal) {
             if (d.type === 'cluster') {
                 showClusterPopup(d, visualCircle, event);
             } else {
+                _hotspotPinned = true;
                 showPopup(d.data, visualCircle, event);
             }
         });
@@ -782,6 +784,7 @@ function hidePopup() {
         _activeHotspot = null;
     }
 
+    _hotspotPinned = false;
     _popupPending = false;
 }
 
