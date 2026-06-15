@@ -390,7 +390,7 @@ svg {
     .map-card { padding: 10px; width: calc(100% - 20px); max-width: 80%;}
     .map-card h1 { text-align: left; font-size: 25px; margin: 6px 0 10px; }
     #map { -webkit-overflow-scrolling: touch; }
-    #map svg { touch-action: pan-y; }
+    #map svg { touch-action: none; }
 }
 
 @media (max-width: 790px) {
@@ -398,7 +398,7 @@ svg {
     .map-meta { grid-template-columns: 1fr; grid-template-rows: auto auto; gap: 8px; }
     .landing-grid { grid-template-columns: repeat(auto-fill, minmax(220px, 1fr)); gap: 16px; }
     #map { -webkit-overflow-scrolling: touch; }
-    #map svg { touch-action: pan-y; }
+    #map svg { touch-action: none; }
 }
 
 @media (max-width: 520px) {
@@ -406,7 +406,7 @@ svg {
     .map-meta img { width: 150px; margin: 0; }
     .map-card h1 { font-size: 20px;}
     #map { -webkit-overflow-scrolling: touch; }
-    #map svg { touch-action: pan-y; }
+    #map svg { touch-action: none; }
 
     .popup {
         position: fixed;

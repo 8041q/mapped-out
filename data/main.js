@@ -394,7 +394,7 @@ function initProvinceInteractions(states, tooltip, popup, signal) {
 }
 
 // Proximity threshold (SVG viewBox units) — hotspots within this distance are merged into a cluster
-const CLUSTER_THRESHOLD_VB = 8;
+const CLUSTER_THRESHOLD_VB = 9;
 
 // clusterHotspots: group nearby hotspots into cluster objects using greedy proximity
 function clusterHotspots(hotspots, threshold) {
@@ -445,7 +445,7 @@ function initHotspots(svg, states, hotspots, tooltip, popup, signal) {
         .append('g')
         .attr('class', 'hotspot-group');
 
-    // Circle for every render item (single or cluster)
+    // Circle for every render item (single or cluster) — visual only, no pointer events
     const circles = groups.append('circle')
         .attr('class', d => d.type === 'cluster' ? 'hotspot hotspot--cluster' : 'hotspot')
         .attr('cx', d => d.type === 'cluster' ? d.x : d.data.x)
@@ -455,7 +455,7 @@ function initHotspots(svg, states, hotspots, tooltip, popup, signal) {
         .style('stroke', d => d.type === 'cluster' ? 'rgb(0, 60, 140)' : 'rgb(200, 0, 0)')
         .style('vector-effect', 'non-scaling-stroke')
         .style('cursor', 'pointer')
-        .style('pointer-events', 'auto');
+        .style('pointer-events', 'none');
 
     // Count badge for cluster items
     groups.filter(d => d.type === 'cluster')
@@ -468,15 +468,27 @@ function initHotspots(svg, states, hotspots, tooltip, popup, signal) {
         .style('pointer-events', 'none')
         .text(d => d.members.length);
 
-    circles
+    // Invisible hit-area ring — larger transparent circle on top that receives all pointer events
+    const hits = groups.append('circle')
+        .attr('class', 'hotspot-hit')
+        .attr('cx', d => d.type === 'cluster' ? d.x : d.data.x)
+        .attr('cy', d => d.type === 'cluster' ? d.y : d.data.y)
+        .attr('r', _hotspotBaseRadiusVB * 3)
+        .style('fill', 'transparent')
+        .style('stroke', 'none')
+        .style('cursor', 'pointer')
+        .style('pointer-events', 'all');
+
+    hits
         .on('mouseenter', function (event, d) {
+            const visualCircle = this.closest('.hotspot-group').querySelector('circle.hotspot');
             if (d.type === 'cluster') {
                 // Highlight on hover — popup opens on click only
-                d3.select(this)
+                d3.select(visualCircle)
                     .style('fill', 'rgba(0, 130, 220, 0.85)')
                     .style('stroke', 'rgb(0, 90, 200)');
                 // Show a brief hint only when the list popup isn't already open
-                if (_activeHotspot !== this) {
+                if (_activeHotspot !== visualCircle) {
                     _tooltip
                         .text(`${d.members.length} nearby hospitals`)
                         .style('left', (event.pageX + 14) + 'px')
@@ -484,16 +496,17 @@ function initHotspots(svg, states, hotspots, tooltip, popup, signal) {
                         .style('opacity', 1);
                 }
             } else {
-                d3.select(this)
+                d3.select(visualCircle)
                     .style('fill', 'rgba(255, 0, 0, 0.55)')
                     .style('stroke', 'rgb(255, 0, 0)');
-                showPopup(d.data, this, event);
+                showPopup(d.data, visualCircle, event);
             }
         })
         .on('mouseleave', function (event, d) {
-            if (_activeHotspot !== this) {
-                const isCluster = d3.select(this).classed('hotspot--cluster');
-                d3.select(this)
+            const visualCircle = this.closest('.hotspot-group').querySelector('circle.hotspot');
+            if (_activeHotspot !== visualCircle) {
+                const isCluster = d3.select(visualCircle).classed('hotspot--cluster');
+                d3.select(visualCircle)
                     .style('fill', isCluster ? 'rgba(0, 90, 180, 0.75)' : 'rgba(215, 38, 61, 0.65)')
                     .style('stroke', isCluster ? 'rgb(0, 60, 140)' : 'rgb(200, 0, 0)');
             }
@@ -506,10 +519,11 @@ function initHotspots(svg, states, hotspots, tooltip, popup, signal) {
         })
         .on('click', function (event, d) {
             event.stopPropagation();
+            const visualCircle = this.closest('.hotspot-group').querySelector('circle.hotspot');
             if (d.type === 'cluster') {
-                showClusterPopup(d, this, event);
+                showClusterPopup(d, visualCircle, event);
             } else {
-                showPopup(d.data, this, event);
+                showPopup(d.data, visualCircle, event);
             }
         });
 
@@ -541,7 +555,9 @@ function adjustHotspots() {
         // zoomLevel: relative zoom compared to full viewBox width
         const zoomLevel = _hotspotFullVBWidth / currentVBWidth;
         // Scale radius in pixels then convert to viewBox units
-        const baseRadiusPx = 6;
+        // On coarse-pointer (touch) devices the visual circles are doubled for easier tapping
+        const isCoarsePointer = window.matchMedia('(pointer: coarse)').matches;
+        const baseRadiusPx = 6 * (isCoarsePointer ? 2.0 : 1.0);
         const scalingFactor = 0.3;
         const scaledRadiusPx = baseRadiusPx * (1 + (zoomLevel - 1) * scalingFactor);
         const newRadiusVB = scaledRadiusPx * vbUnitsPerPixel;
@@ -560,6 +576,11 @@ function adjustHotspots() {
         // Badge text scales proportionally with the circle radius
         _svg.selectAll('text.hotspot-cluster-label')
             .attr('font-size', newRadiusVB);
+
+        // Hit rings stay 3× the visual radius so they scale in sync
+        _svg.selectAll('circle.hotspot-hit').attr('r', function(d) {
+            return d.type === 'cluster' ? newRadiusVB * 1.3 * 3 : newRadiusVB * 3;
+        });
 
     } catch (e) {
         console.error('adjustHotspots error:', e);
@@ -848,20 +869,17 @@ function initZoom(svg, signal) {
         }
     }
 
-    // Main zoom function
-    function performZoom(e) {
+    // Core zoom logic: apply a zoom factor centered on a client-space point
+    function applyZoom(zoomFactor, clientX, clientY) {
         try {
             const rect = svgEl.getBoundingClientRect();
-            const mouseX = e.clientX - rect.left;
-            const mouseY = e.clientY - rect.top;
+            const mouseX = clientX - rect.left;
+            const mouseY = clientY - rect.top;
 
             const scaleX = vb[2] / rect.width;
             const scaleY = vb[3] / rect.height;
             const vbMouseX = vb[0] + mouseX * scaleX;
             const vbMouseY = vb[1] + mouseY * scaleY;
-
-            const delta = e.deltaY;
-            const zoomFactor = delta > 0 ? 1.15 : 1 / 1.15;
 
             let newW = vb[2] * zoomFactor;
             let newH = vb[3] * zoomFactor;
@@ -882,6 +900,11 @@ function initZoom(svg, signal) {
         } catch (err) {
             console.error('Zoom error:', err);
         }
+    }
+
+    // Wheel zoom wrapper
+    function performZoom(e) {
+        applyZoom(e.deltaY > 0 ? 1.15 : 1 / 1.15, e.clientX, e.clientY);
     }
 
     // Window-level capture listener to intercept wheel events over the SVG.
@@ -936,6 +959,26 @@ function initZoom(svg, signal) {
     let startClient = null;
     let vbStart = null;
 
+    // Touch state for single-finger pan and two-finger pinch-to-zoom
+    let isTouchPanning = false;
+    let touchStart = null;
+    let vbTouchStart = null;
+    let lastPinchDist = null;
+    let wasPinching = false;
+
+    function getTouchDistance(touches) {
+        const dx = touches[0].clientX - touches[1].clientX;
+        const dy = touches[0].clientY - touches[1].clientY;
+        return Math.sqrt(dx * dx + dy * dy);
+    }
+
+    function getTouchMidpoint(touches) {
+        return {
+            x: (touches[0].clientX + touches[1].clientX) / 2,
+            y: (touches[0].clientY + touches[1].clientY) / 2
+        };
+    }
+
     function setCursorDragging(active) {
         if (active) {
             svgEl.classList.add('map-interaction-active');
@@ -949,7 +992,7 @@ function initZoom(svg, signal) {
     svgEl.addEventListener('mousedown', function (e) {
         if (e.button !== 0) return;
         const target = e.target;
-        if (target && (target.classList.contains('hotspot') || target.closest('.hotspot'))) return;
+        if (target && (target.classList.contains('hotspot') || target.classList.contains('hotspot-hit'))) return;
 
         isPanning = true;
         startClient = { x: e.clientX, y: e.clientY };
@@ -976,6 +1019,59 @@ function initZoom(svg, signal) {
         startClient = null;
         vbStart = null;
         setCursorDragging(false);
+    }, { signal });
+
+    // Touch pan (single finger) and pinch-to-zoom (two fingers)
+    svgEl.addEventListener('touchstart', function(e) {
+        const target = e.target;
+        const onHotspot = target && (target.classList.contains('hotspot-hit') || target.classList.contains('hotspot'));
+        if (e.touches.length === 2) {
+            e.preventDefault();
+            lastPinchDist = getTouchDistance(e.touches);
+            wasPinching = true;
+            isTouchPanning = false;
+            touchStart = null;
+            vbTouchStart = null;
+        } else if (e.touches.length === 1 && !wasPinching && !onHotspot) {
+            isTouchPanning = true;
+            touchStart = { x: e.touches[0].clientX, y: e.touches[0].clientY };
+            vbTouchStart = vb.slice();
+        }
+    }, { passive: false, signal });
+
+    window.addEventListener('touchmove', function(e) {
+        if (e.touches.length === 2 && lastPinchDist !== null) {
+            e.preventDefault();
+            const newDist = getTouchDistance(e.touches);
+            if (newDist > 0) {
+                const ratio = lastPinchDist / newDist;
+                const mid = getTouchMidpoint(e.touches);
+                applyZoom(ratio, mid.x, mid.y);
+            }
+            lastPinchDist = newDist;
+        } else if (e.touches.length === 1 && isTouchPanning && vbTouchStart && touchStart) {
+            e.preventDefault();
+            const rect = svgEl.getBoundingClientRect();
+            const dx = e.touches[0].clientX - touchStart.x;
+            const dy = e.touches[0].clientY - touchStart.y;
+            const scaleX = vbTouchStart[2] / rect.width;
+            const scaleY = vbTouchStart[3] / rect.height;
+            vb = clampToFull([vbTouchStart[0] - dx * scaleX, vbTouchStart[1] - dy * scaleY, vbTouchStart[2], vbTouchStart[3]]);
+            svg.attr('viewBox', vb.join(' '));
+            requestAnimationFrame(() => adjustHotspots());
+        }
+    }, { passive: false, signal });
+
+    window.addEventListener('touchend', function(e) {
+        if (e.touches.length < 2) {
+            lastPinchDist = null;
+        }
+        if (e.touches.length === 0) {
+            isTouchPanning = false;
+            touchStart = null;
+            vbTouchStart = null;
+            setTimeout(() => { wasPinching = false; }, 100);
+        }
     }, { signal });
 
     setCursorDragging(false);
