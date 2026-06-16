@@ -136,29 +136,7 @@ const CLUSTER_THRESHOLD_VB = 8;  // increase to group more aggressively, decreas
 
 ### Multiple Images (Carousel)
 
-Any hotspot can show more than one photo. When two or more images are listed the popup automatically adds ← → buttons and a counter (*"1 / 3"*). Single-image hotspots using the existing `imageUrl` field are completely unaffected.
-
-```javascript
-// Before - single image, no arrows
-{
-    title: 'Kumphawapi Hospital',
-    imageUrl: 'images/thailand/udon_thani.jpg',
-    x: 382.822, y: 231.766
-}
-
-// After - carousel with three photos, arrows appear automatically
-{
-    title: 'Kumphawapi Hospital',
-    images: [
-        'images/thailand/udon_thani.jpg',
-        'images/thailand/udon_thani_ward.jpg',
-        'images/thailand/udon_thani_equipment.jpg'
-    ],
-    x: 382.822, y: 231.766
-}
-```
-
-> **Note:** If both `images` and `imageUrl` are present on the same entry, `images` takes priority. You can keep `imageUrl` while you add photos gradually.
+Any hotspot can show more than one photo. When two or more images are listed the popup automatically adds ← → buttons and a counter (*"1 / 3"*)
 
 ---
 
