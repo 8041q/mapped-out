@@ -138,8 +138,8 @@ const MAP_CATALOG = {
                 description: 'Private hospital. 4 pcs patient trolley SKM11-1 used in this hospital.',
                 x: 186.093,
                 y: 454.845,
-                images: ['images/thailand/nakhon_dontu/1.jpeg',
-                    'images/thailand/nakhon_redCross/2.jpeg']
+                images: ['images/thailand/nakhon_dontu/2.jpeg',
+                    'images/thailand/nakhon_dontu/1.jpeg']
             },
             {
                 provinceId: 'TH-40',

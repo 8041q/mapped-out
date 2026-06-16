@@ -612,6 +612,7 @@ function showPopup(d, circleEl, evt) {
     }
 
     _popup.classed('open', false).classed('popup--cluster', false);
+    _popup.style('width', null); // clear any width locked by a previous popup
 
     // Normalise image source: prefer images[] array, fall back to legacy imageUrl
     const imgs = d.images || (d.imageUrl ? [d.imageUrl] : []);
@@ -624,14 +625,16 @@ function showPopup(d, circleEl, evt) {
         _popup.html(
             `<div class="popup-carousel">` +
             `<img src="" alt="">` +
-            `<button class="popup-carousel-btn popup-prev" aria-label="Previous">&#8592;</button>` +
-            `<button class="popup-carousel-btn popup-next" aria-label="Next">&#8594;</button>` +
+            `<button class="popup-carousel-btn popup-prev" aria-label="Previous"><svg width="9" height="15" viewBox="0 0 9 15" fill="none" xmlns="http://www.w3.org/2000/svg"><polyline points="8,1 1,7.5 8,14" stroke="grey" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg></button>` +
+            `<button class="popup-carousel-btn popup-next" aria-label="Next"><svg width="9" height="15" viewBox="0 0 9 15" fill="none" xmlns="http://www.w3.org/2000/svg"><polyline points="1,1 8,7.5 1,14" stroke="grey" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg></button>` +
             `</div>` +
             `<div class="popup-carousel-counter"></div>` +
             textContent
         );
 
         let idx = 0;
+        let heightLocked = false;
+        const carouselEl = _popup.select('.popup-carousel');
         const imgEl = _popup.select('.popup-carousel img');
         const counter = _popup.select('.popup-carousel-counter');
 
@@ -640,6 +643,26 @@ function showPopup(d, circleEl, evt) {
             const src = imgs[idx];
             const loader = new Image();
             loader.onload = () => {
+                if (!heightLocked) {
+                    // Lock dimensions before the image paints using intrinsic pixel size
+                    const containerW = carouselEl.node().offsetWidth;
+                    const maxH = 600;
+                    const naturalRatio = loader.naturalWidth / loader.naturalHeight;
+                    let w = containerW;
+                    let h = containerW / naturalRatio;
+                    if (h > maxH) {
+                        // Height capped: shrink width too so the box keeps the
+                        // image's true aspect ratio instead of cropping top/bottom
+                        h = maxH;
+                        w = maxH * naturalRatio;
+                    }
+                    const popupW = _popup.node().offsetWidth;
+                    const newPopupW = popupW - (containerW - w);
+                    carouselEl.style('height', h + 'px').style('width', w + 'px');
+                    imgEl.style('width', '100%').style('height', '100%');
+                    _popup.style('width', newPopupW + 'px');
+                    heightLocked = true;
+                }
                 imgEl.attr('src', src).style('opacity', 1).style('transform', 'translateY(0)');
             };
             loader.src = src;
@@ -699,6 +722,7 @@ function showClusterPopup(clusterData, circleEl, evt) {
         .style('stroke', 'rgb(0, 90, 200)');
 
     _popup.classed('open', false).classed('popup--cluster', true);
+    _popup.style('width', null); // clear any width locked by a previous popup
 
     let content = `<strong>${clusterData.members.length} nearby hospitals</strong>`;
     content += `<ul class="popup-cluster-list">`;

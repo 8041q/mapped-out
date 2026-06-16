@@ -138,6 +138,7 @@ svg {
     position: relative;
     display: block;
     margin-bottom: 8px;
+    overflow: hidden;
 }
 .popup-carousel img {
     margin-bottom: 0;
@@ -146,25 +147,32 @@ svg {
     position: absolute;
     top: 50%;
     transform: translateY(-50%);
-    background: rgba(0, 0, 0, 0.45);
-    color: #fff;
-    border: none;
+    background: rgba(255, 255, 255, 0.18);
+    backdrop-filter: blur(12px) saturate(1.6);
+    -webkit-backdrop-filter: blur(12px) saturate(1.6);
+    border: 1px solid rgba(255, 255, 255, 0.30);
     border-radius: 50%;
-    width: 28px;
-    height: 28px;
+    width: 30px;
+    height: 30px;
     cursor: pointer;
-    font-size: 15px;
-    line-height: 1;
     z-index: 1;
     display: flex;
     align-items: center;
     justify-content: center;
+    transition: background 180ms ease, border-color 180ms ease, transform 180ms ease;
+    box-shadow: 0 2px 8px rgba(0,0,0,0.18);
 }
 .popup-carousel-btn:hover {
-    background: rgba(0, 0, 0, 0.65);
+    background: rgba(255, 255, 255, 0.32);
+    border-color: rgba(255, 255, 255, 0.55);
+    transform: translateY(-50%) scale(1.08);
 }
-.popup-prev { left: 6px; }
-.popup-next { right: 6px; }
+.popup-carousel-btn:active {
+    transform: translateY(-50%) scale(0.95);
+    background: rgba(255, 255, 255, 0.42);
+}
+.popup-prev { left: 8px; }
+.popup-next { right: 8px; }
 .popup-carousel-counter {
     text-align: center;
     font-size: 11px;
@@ -252,6 +260,7 @@ svg {
     background: var(--popup-bg);
     border: 1px solid rgba(0,0,0,0.08);
     padding: var(--popup-padding);
+    box-sizing: border-box;
     pointer-events: auto;
     opacity: 0;
     visibility: hidden;
