@@ -646,7 +646,7 @@ function showPopup(d, circleEl, evt) {
                 if (!heightLocked) {
                     // Lock dimensions before the image paints using intrinsic pixel size
                     const containerW = carouselEl.node().offsetWidth;
-                    const maxH = 600;
+                    const maxH = 750;
                     const naturalRatio = loader.naturalWidth / loader.naturalHeight;
                     let w = containerW;
                     let h = containerW / naturalRatio;

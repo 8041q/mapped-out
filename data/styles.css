@@ -461,6 +461,14 @@ svg {
     }
     .popup::after { display: none; }
 
+    .popup img {
+        width: auto;
+        max-width: 100%;
+        max-height: 65vh;
+        display: block;
+        margin: 0 auto 8px;
+    }
+
     .popup-cluster-list li {
         padding: 10px 10px;
         font-size: 15px;
