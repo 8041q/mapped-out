@@ -127,9 +127,9 @@ const MAP_CATALOG = {
                 description: 'Thai Red Cross project. 18 pcs dialysis chairs SRT-136 used in their organisation.',
                 x: 324.532,
                 y: 385.677,
-                images: ['images/thailand/nakhon_redCross/1.jpeg',
+                images: ['images/thailand/nakhon_redCross/3.jpeg',
+                    'images/thailand/nakhon_redCross/1.jpeg',
                     'images/thailand/nakhon_redCross/2.jpeg',
-                    'images/thailand/nakhon_redCross/3.jpeg',
                     'images/thailand/nakhon_redCross/4.jpeg',]
             },
             {
