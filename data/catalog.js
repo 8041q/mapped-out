@@ -76,7 +76,7 @@ const MAP_CATALOG = {
             {
                 provinceId: 'TH-10',
                 title: 'Phyathai 1 Hospital',
-                description: 'Private hospital group. 6 pcs medical trolleys are used in their pediatric department and OB rooms.',
+                description: 'Private hospital group. Medical trolleys are used in their pediatric department and OB rooms.',
                 x: 216.093,
                 y: 469.861,
                 images: ['images/thailand/bangkok_phyathai/1.jpeg',
@@ -85,7 +85,7 @@ const MAP_CATALOG = {
             {
                 provinceId: 'TH-10',
                 title: 'Chulalongkorn HP',
-                description: 'Public hospital, 25 pcs medical trolleys used in this hospital.',
+                description: 'Public hospital, Medical trolleys used in this hospital.',
                 x: 219.493,
                 y: 472.061,
                 images: ['images/thailand/bangkok_chuHP/1.jpeg',
@@ -124,7 +124,7 @@ const MAP_CATALOG = {
             {
                 provinceId: 'TH-30',
                 title: 'National Blood Service Region 5, Thai Red Cross',
-                description: 'Thai Red Cross project. 18 pcs dialysis chairs SRT-136 used in their organisation.',
+                description: 'Thai Red Cross project. Dialysis chairs SKE-136 used in their organisation.',
                 x: 324.532,
                 y: 385.677,
                 images: ['images/thailand/nakhon_redCross/3.jpeg',
@@ -135,7 +135,7 @@ const MAP_CATALOG = {
             {
                 provinceId: 'TH-73',
                 title: 'Dontu Hospital',
-                description: 'Private hospital. 4 pcs patient trolley SKM11-1 used in this hospital.',
+                description: 'Private hospital. Patient trolley SKB041-1 used in this hospital.',
                 x: 186.093,
                 y: 454.845,
                 images: ['images/thailand/nakhon_dontu/2.jpeg',
