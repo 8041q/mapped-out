@@ -122,6 +122,14 @@ svg {
     touch-action: manipulation;
     fill: rgba(215, 38, 61, 0.65);
     stroke: rgb(200,0,0);
+    transform-box: fill-box;
+    transform-origin: center;
+    transition: transform 180ms cubic-bezier(.34, 1.56, .64, 1), fill 160ms ease, stroke 160ms ease;
+}
+
+/* Pop the circle slightly on hover so it reads as clickable, in addition to the colour shift */
+.hotspot-group:hover .hotspot {
+    transform: scale(1.35);
 }
 
 /* Cluster badge text (rendered inside the cluster circle) */
@@ -419,7 +427,7 @@ svg {
 
 /* Accessibility */
 @media (prefers-reduced-motion: reduce) {
-    .popup, .popup img, .tooltip, .landing-card {
+    .popup, .popup img, .tooltip, .landing-card, .hotspot {
         transition: none !important;
         animation: none !important;
     }

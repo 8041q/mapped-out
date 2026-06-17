@@ -758,6 +758,13 @@ function positionPopup(circleEl, evt) {
     const popup = _popup.node();
     if (!popup) return;
 
+    // Always use viewport-relative ("fixed") positioning rather than document-relative
+    // ("absolute") positioning.
+    // Fixed positioning is always relative to what's currently on screen, so
+    // it can't drift off into a part of the iframe that's scrolled out of view.
+    popup.style.position = 'fixed';
+    popup.style.right = '';
+    popup.style.bottom = '';
     popup.style.left = '0px';
     popup.style.top = '0px';
     popup.style.setProperty('--popup-left', '0px');
@@ -767,9 +774,11 @@ function positionPopup(circleEl, evt) {
         const rect = popup.getBoundingClientRect();
         _popupRectCached = rect;
 
-        const isMobile = window.innerWidth <= 520;
+        const viewportW = window.innerWidth;
+        const viewportH = window.innerHeight;
+        const isMobile = viewportW <= 520;
+
         if (isMobile) {
-            popup.style.position = 'fixed';
             popup.style.left = '12px';
             popup.style.right = '12px';
             popup.style.top = 'auto';
@@ -777,15 +786,25 @@ function positionPopup(circleEl, evt) {
             return;
         }
 
-        let x = evt.pageX + 16;
-        let y = evt.pageY - rect.height / 2;
+        const margin = 20;
 
-        if (x + rect.width > window.innerWidth - 20) {
-            x = evt.pageX - rect.width - 16;
-        }
-        if (y < window.scrollY + 20) y = window.scrollY + 20;
-        if (y + rect.height > window.scrollY + window.innerHeight - 20) {
-            y = window.scrollY + window.innerHeight - rect.height - 20;
+        // Anchor near the cursor
+        // the visible viewport (clientX/clientY) instead of the document.
+        let x = evt.clientX + 16;
+        let y = evt.clientY - rect.height / 2;
+
+        const fitsToRight = x + rect.width <= viewportW - margin;
+        const fitsIfFlippedLeft = evt.clientX - rect.width - 16 >= margin;
+        const fitsVertically = rect.height <= viewportH - margin * 2;
+
+        if ((fitsToRight || fitsIfFlippedLeft) && fitsVertically) {
+            if (!fitsToRight) x = evt.clientX - rect.width - 16;
+            if (y < margin) y = margin;
+            if (y + rect.height > viewportH - margin) y = viewportH - rect.height - margin;
+        } else {
+            // fallback
+            x = Math.max(margin, (viewportW - rect.width) / 2);
+            y = Math.max(margin, (viewportH - rect.height) / 2);
         }
 
         popup.style.setProperty('--popup-left', x + 'px');
