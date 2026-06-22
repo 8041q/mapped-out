@@ -66,7 +66,7 @@ const MAP_CATALOG = {
                         {
                 provinceId: 'TH-10',
                 title: 'Police General Hospital',
-                description: 'A police hospital for the Royal Thai Police, equipped with the Saikang hospital beds of CDB6s.',
+                description: 'A police hospital for the Royal Thai Police, equipped with the Saikang hospital beds of GB8e8y.',
                 x: 218.993,
                 y: 469.261,
                 images: ['images/thailand/bangkok_policeGen/1.png',
