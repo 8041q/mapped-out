@@ -148,6 +148,36 @@ const MAP_CATALOG = {
                 x: 371.629,
                 y: 282.101,
                 images: ['images/thailand/nakhon_phanom/1.jpeg']
+            },
+            {
+                provinceId: 'TH-90',
+                title: 'Songklanagarind Hospital',
+                description: 'Songklanagarind Hospital is a university teaching hospital affiliated with the Faculty of Medicine at Prince of Songkla University, located in Hat Yai District, Songkhla Province. As the first university hospital in Southern Thailand, it is a super-tertiary care facility. For teaching purposes, the hospital is equipped with beds from Saikang Medical and model V3v beds.',
+                x: 213,
+                y: 928,
+                images: ['images/thailand/songklanagarind/2.png',
+                    'images/thailand/songklanagarind/1.png']
+            },
+            {
+                provinceId: 'TH-92',
+                title: 'Na Yong Hospital',
+                description: 'Nayong Hospital is a primary healthcare facility located in Trang Province, Thailand. Saikang Medical supplied V6v hospital beds.',
+                x: 163,
+                y: 893,
+                images: ['images/thailand/na-yong/1.png']
+            },
+            {
+                provinceId: 'TH-56',
+                title: 'Phayao Hospital',
+                description: 'It\'s the main public hospital in Phayao Province, in northern Thailand. It serves as the primary healthcare center and plays an important role in both emergency care and general medical services for the local population. We won a 110 manual bed project here, with our model V3v.',
+                x: 170,
+                y: 90,
+                images: ['images/thailand/phayao/6.png',
+                    'images/thailand/phayao/3.jpeg',
+                    'images/thailand/phayao/2.jpeg',
+                    'images/thailand/phayao/4.jpeg',
+                    'images/thailand/phayao/5.jpeg',
+                    'images/thailand/phayao/1.jpeg']
             }
         ]
     }
