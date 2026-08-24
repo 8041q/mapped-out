@@ -180,6 +180,213 @@ const MAP_CATALOG = {
                     'images/thailand/phayao/1.jpeg']
             }
         ]
+    },
+    philippines: {
+        title: 'Hospital Projects in the Philippines',
+        svgUrl: 'images/philippines/philippines.svg',
+        logoUrl: '',
+        logoAlt: '',
+        thumbnail: 'images/philippines/philippines.svg',
+        description: 'Saikang Medical hospital bed and equipment supply projects across the Philippines.',
+
+        geoBounds: {
+            minLon: 116.927573,
+            maxLat: 20.834769,
+            maxLon: 126.606549,
+            minLat: 4.640292
+        },
+
+        colorConfig: {
+            baseHue: 140,
+            sat: '50%',
+            minLight: 70,
+            maxLight: 82
+        },
+
+        hotspots: [
+            {
+                provinceId: 'PH-PAM',
+                title: 'Center for Infectious Diseases and Tropical Medicine',
+                description: 'We have maintained a partnership with the Philippine Department of Health (DOH) for over a decade. Business generated from DOH accounts for 30% of our total market share in the Philippines, making it our key benchmark client among all public medical institutions.',
+                x: 272.725,
+                y: 433.212,
+                images: ['images/philippines/pampanga_center/1.png',
+                    'images/philippines/pampanga_center/2.png',
+                    'images/philippines/pampanga_center/3.png']
+            },
+            {
+                provinceId: 'PH-AGN',
+                title: 'Allied Care Experts Medical Center Inc',
+                description: 'ACE Group stands as our flagship private hospital partner. We have established a long-term and stable cooperative relationship since we commenced collaboration back in 2022.',
+                x: 625.024,
+                y: 888.848,
+                images: ['images/philippines/butuan_allied_care/1.png',
+                    'images/philippines/butuan_allied_care/2.png',
+                    'images/philippines/butuan_allied_care/3.jpeg']
+            },
+            {
+                provinceId: 'PH-MNL',
+                title: 'Ospital ng Paranaque hospital',
+                description: 'Ospital ng Parañaque (OsPar) is a leading public tertiary hospital in Parañaque City, Metro Manila, owned and operated by the Parañaque City Government.',
+                x: 297.3,
+                y: 474.0,
+                images: ['images/philippines/manila_paranaque_hospital/1.png',
+                    'images/philippines/manila_paranaque_hospital/2.png',
+                    'images/philippines/manila_paranaque_hospital/3.png']
+            },
+            {
+                provinceId: 'PH-SLU',
+                title: 'Parang district hospital',
+                description: 'Parang District Hospital is a public district medical institution in Parang, Sulu, the Philippines, delivering standardized medical and healthcare services for local residents and surrounding communities.',
+                x: 288.748,
+                y: 1114.334,
+                images: ['images/philippines/sulu_parang_hospital/1.png',
+                    'images/philippines/sulu_parang_hospital/2.png']
+            },
+            {
+                provinceId: 'PH-MSR',
+                title: 'New MMG Hospital',
+                description: 'New Medical Mission Group Hospital (New MMG Hospital) is a private Level II general hospital in Solano, Nueva Vizcaya, Philippines, offering secondary healthcare services under the MMG Federation.',
+                x: 531.219,
+                y: 942.158,
+                images: ['images/philippines/cagayan_mission_group/1.png',
+                    'images/philippines/cagayan_mission_group/2.png']
+            },
+            {
+                provinceId: 'PH-CAG',
+                title: 'Cagayan Valley Medical Center',
+                description: 'The Cagayan Valley Medical Center started from an army tent. Immediately after the war in 1945, the 37th Infantry put up the 43rd Filed Hospital that came from Pangasinan under Major Anderson of the United State Marine Corps (USMC) treating both Filipino and American soldiers.',
+                x: 346.8,
+                y: 240.4,
+                images: ['images/philippines/cagayan_valley_medical/1.png',
+                    'images/philippines/cagayan_valley_medical/2.png',
+                    'images/philippines/cagayan_valley_medical/3.png',
+                    'images/philippines/cagayan_valley_medical/4.png',
+                    'images/philippines/cagayan_valley_medical/5.png']
+            },
+            {
+                provinceId: 'PH-BAN',
+                title: 'Bataan General Hospital and Medical Center',
+                description: 'Bataan General Hospital and Medical Center (BGHMC) is a Level III tertiary, teaching and training hospital under the Department of Health (DOH), located in Balanga City, Bataan.',
+                x: 261.528,
+                y: 459.794,
+                images: ['images/philippines/bataan_general_hospital/1.png',
+                    'images/philippines/bataan_general_hospital/2.png',
+                    'images/philippines/bataan_general_hospital/3.png',
+                    'images/philippines/bataan_general_hospital/4.png']
+            },
+            {
+                provinceId: 'PH-MSR',
+                title: 'New Medical Mission Group Hospital',
+                description: 'New Medical Mission Group Hospital (New MMG Hospital) is a private Level II general hospital in Solano, Nueva Vizcaya, Philippines, offering secondary healthcare services under the MMG Federation.',
+                x: 531.219,
+                y: 942.158,
+                images: ['images/philippines/cagayan_nmg_hospital/1.jpeg',
+                    'images/philippines/cagayan_nmg_hospital/2.jpeg',
+                    'images/philippines/cagayan_nmg_hospital/3.jpeg',
+                    'images/philippines/cagayan_nmg_hospital/4.jpeg']
+            },
+            {
+                provinceId: 'PH-QUE',
+                title: 'East Avenue Medical Center (EAMC)',
+                description: 'EAMC is a 1000-bed Level-3 government tertiary hospital under the Philippine Department of Health, located in Diliman, Quezon City.',
+                x: 298.984,
+                y: 462.425,
+                images: ['images/philippines/manila_eamc/1.jpeg',
+                    'images/philippines/manila_eamc/2.jpeg',
+                    'images/philippines/manila_eamc/3.png',
+                    'images/philippines/manila_eamc/4.png',
+                    'images/philippines/manila_eamc/5.jpeg']
+            },
+            {
+                provinceId: 'PH-BEN',
+                title: 'Saint Louis University',
+                description: 'Founded in 1911 by CICM missionaries, Saint Louis University is the largest private Catholic university in Northern Luzon, Philippines, located in the cool mountain city of Baguio.',
+                x: 266.372,
+                y: 329.812,
+                images: ['images/philippines/benguet_saint_louis_uni/1.png',
+                    'images/philippines/benguet_saint_louis_uni/2.png',
+                    'images/philippines/benguet_saint_louis_uni/3.png']
+            },
+            {
+                provinceId: 'PH-QUE',
+                title: 'National Kidney and Transplant Institute',
+                description: 'National Kidney and Transplant Institute the Philippines. The National Kidney and Transplant Institute (NKTI) is a government-owned and controlled corporate tertiary specialty center attached to the Department of Health.',
+                x: 298.984,
+                y: 462.113,
+                images: ['images/philippines/manila_kidney_transplant/1.png',
+                    'images/philippines/manila_kidney_transplant/2.png']
+            },
+            {
+                provinceId: 'PH-LAG',
+                title: 'AMSI Doctors',
+                description: 'Inaugurated in October 2023, AMSI Doctors\' Medical Center is a modern 130-bed referral hospital in Calamba, Laguna.',
+                x: 307.012,
+                y: 495.084,
+                images: ['images/philippines/laguna_amsi/1.png',
+                    'images/philippines/laguna_amsi/2.png']
+            },
+            {
+                provinceId: 'PH-SLU',
+                title: 'IPHO Sulu Province Hospital',
+                description: 'Operated under the Integrated Provincial Health Office of Sulu, this is the major public provincial hospital located in Jolo, the capital of Sulu.',
+                x: 295.6,
+                y: 1104.4,
+                images: ['images/philippines/mindanao_ipho/1.png',
+                    'images/philippines/mindanao_ipho/2.png',
+                    'images/philippines/mindanao_ipho/3.png',
+                    'images/philippines/mindanao_ipho/4.png']
+            },
+            {
+                provinceId: 'PH-MNL',
+                title: 'Chinese General Hospital and Medical Center',
+                description: 'Founded in 1891 with donations from Filipino-Chinese community, CGHMC is one of Manila\'s oldest non-profit tertiary teaching hospitals.',
+                x: 294.728,
+                y: 463.742,
+                images: ['images/philippines/manila_cghmc/1.png']
+            },
+            {
+                provinceId: 'PH-BUL',
+                title: 'Bocaue Specialists Medical Center',
+                description: 'Established in 2022, Bocaue Specialists Medical Center is a private community-based hospital in Bulacan province north of Metro Manila.',
+                x: 291.0,
+                y: 451.9,
+                images: ['images/philippines/bulacan_bocaue_center/1.png',
+                    'images/philippines/bulacan_bocaue_center/2.png',
+                    'images/philippines/bulacan_bocaue_center/3.png']
+            },
+            {
+                provinceId: 'PH-LEY',
+                title: 'Mother of Mercy Hospital',
+                description: 'It is a private Level-2 general hospital located in Tacloban, Leyte. It delivers emergency service, inpatient-outpatient care covering internal medicine, pediatrics, obstetrics-gynecology and general surgery.',
+                x: 585.8,
+                y: 717.3,
+                images: ['images/philippines/leyte_mercy_hospital/1.png',
+                    'images/philippines/leyte_mercy_hospital/2.png']
+            },
+            {
+                provinceId: 'PH-SCO',
+                title: 'Dr. Arturo R Pingoy Medical Center',
+                description: 'Commonly known as Pingoy Medical Center, this private Level 2 hospital is located in Koronadal City, South Cotabato in Soccsksargen region.',
+                x: 574.028,
+                y: 1070.078,
+                images: ['images/philippines/south_cotabato_arturo/1.png',
+                    'images/philippines/south_cotabato_arturo/2.png',
+                    'images/philippines/south_cotabato_arturo/3.png',
+                    'images/philippines/south_cotabato_arturo/4.png']
+            },
+            {
+                provinceId: 'PH-CEB',
+                title: 'TDC (The Dialysis Co., Inc.)',
+                description: 'TDC offers affordable excellent quality dialysis treatments with the latest state-of-the-art renal equipment and highly experienced medical team.',
+                x: 506.384,
+                y: 785.362,
+                images: ['images/philippines/cebu_tdc/1.png',
+                    'images/philippines/cebu_tdc/2.png',
+                    'images/philippines/cebu_tdc/3.png',
+                    'images/philippines/cebu_tdc/4.png']
+            }
+        ]
     }
     // ── Add more maps here ──────────────────────────────────────────
     // vietnam: { title: '…', svgUrl: 'images/vietnam/vietnam.svg', … }

@@ -237,13 +237,13 @@ async function loadMap(slug) {
     });
 
     // Initialize zoom/pan handlers
-    initZoom(svg, signal);
+    _zoomState = initZoom(svg, signal);
 
     // Province hover interactions (tooltips, hover styling)
     initProvinceInteractions(states, _tooltip, _popup, signal);
 
     // Search box initialization
-    initSearch(svg, states, _tooltip, _popup, signal);
+    initSearch(svg, states, _tooltip, _popup, signal, _zoomState);
 
     // Close popup when clicking background (not on hotspots)
     svg.on('click', function(event) {
@@ -900,6 +900,101 @@ function initZoom(svg, signal) {
         return [nx, ny, nw, nh];
     }
 
+    // transformPoint: apply an SVGMatrix to a plain {x,y} point
+    function transformPoint(matrix, point) {
+        return {
+            x: matrix.a * point.x + matrix.c * point.y + matrix.e,
+            y: matrix.b * point.x + matrix.d * point.y + matrix.f
+        };
+    }
+
+    // getElementViewBoxBounds: bounding box of `el`, expressed in the current
+    // viewBox coordinate system. Rather than trust getCTM()/getBBox() (which
+    // can be thrown off by any grouping/transform layers inside the source
+    // SVG), this reads the element's actual rendered screen rect and converts
+    // it using the exact same screen->viewBox scale factors that mouse-drag
+    // panning and wheel-zoom already rely on elsewhere in this file — so it's
+    // guaranteed consistent with how the rest of the map's coordinates work.
+    function getElementViewBoxBounds(el) {
+        try {
+            const elRect = el.getBoundingClientRect();
+            const svgRect = svgEl.getBoundingClientRect();
+            if (!elRect || !svgRect || elRect.width <= 0 || elRect.height <= 0) return null;
+
+            const scaleX = vb[2] / svgRect.width;
+            const scaleY = vb[3] / svgRect.height;
+
+            const x = vb[0] + (elRect.left - svgRect.left) * scaleX;
+            const y = vb[1] + (elRect.top - svgRect.top) * scaleY;
+            const width = elRect.width * scaleX;
+            const height = elRect.height * scaleY;
+
+            return { x, y, width, height };
+        } catch (err) {
+            console.error('getElementViewBoxBounds error:', err);
+            return null;
+        }
+    }
+
+    // animateViewBox: smoothly tween the current viewBox to `target`
+    function animateViewBox(target, duration) {
+        const from = vb.slice();
+        d3.select({}).transition()
+            .duration(duration || 700)
+            .ease(d3.easeCubicInOut)
+            .tween('viewBox', function () {
+                const interpolate = d3.interpolateArray(from, target);
+                return function (t) {
+                    vb = interpolate(t);
+                    svg.attr('viewBox', vb.join(' '));
+                    adjustHotspots();
+                };
+            })
+            .on('end interrupt', function () {
+                vb = target;
+                svg.attr('viewBox', vb.join(' '));
+                adjustHotspots();
+            });
+    }
+
+    // panToElement: smoothly zoom/pan so `el` is centered and comfortably
+    // framed. Padding is a fraction of the element's own size on each side,
+    // so small provinces and large ones both end up nicely framed.
+    function panToElement(el, opts) {
+        opts = opts || {};
+        const padding = opts.padding != null ? opts.padding : 0.6;
+        const duration = opts.duration != null ? opts.duration : 700;
+
+        const bounds = getElementViewBoxBounds(el);
+        if (!bounds) return;
+
+        let targetW = bounds.width * (1 + padding * 2);
+        let targetH = bounds.height * (1 + padding * 2);
+
+        // Keep the same aspect ratio as the map's own viewBox so the shape
+        // doesn't stretch, and stay within the zoom limits already enforced
+        // for wheel/pinch zoom (fullVB.width*0.1 .. fullVB.width).
+        const aspect = fullVB[2] / fullVB[3];
+        if (targetW / targetH > aspect) targetH = targetW / aspect;
+        else targetW = targetH * aspect;
+
+        const minW = fullVB[2] * 0.1;
+        if (targetW < minW) { targetW = minW; targetH = targetW / aspect; }
+        if (targetW > fullVB[2]) { targetW = fullVB[2]; targetH = targetW / aspect; }
+
+        const cx = bounds.x + bounds.width / 2;
+        const cy = bounds.y + bounds.height / 2;
+        const target = clampToFull([cx - targetW / 2, cy - targetH / 2, targetW, targetH]);
+
+        animateViewBox(target, duration);
+    }
+
+    // resetView: smoothly return to the full, un-zoomed map
+    function resetView(opts) {
+        opts = opts || {};
+        animateViewBox(fullVB.slice(), opts.duration != null ? opts.duration : 700);
+    }
+
     // Helper: check if pointer is over the SVG using bounding box
     function isPointerOverSvg(e) {
         try {
@@ -1121,10 +1216,12 @@ function initZoom(svg, signal) {
     }, { signal });
 
     setCursorDragging(false);
+
+    return { panToElement, resetView };
 }
 
 // initSearch: search input, suggestions and state activation
-function initSearch(svg, states, tooltip, popup, signal) {
+function initSearch(svg, states, tooltip, popup, signal, zoomController) {
     try {
         const input = document.getElementById('map-search');
         const sugg = document.getElementById('map-search-suggestions');
@@ -1172,6 +1269,7 @@ function initSearch(svg, states, tooltip, popup, signal) {
                     } catch (e) { }
                     activeSearchState.classList.remove('state--active');
                     activeSearchState = null;
+                    if (zoomController && zoomController.resetView) zoomController.resetView();
                 }
                 try { const actLayer = svg.select('#active-state-layer'); if (!actLayer.empty()) actLayer.selectAll('*').remove(); } catch (e) { }
                 try { popup.classed('open', false); } catch (e) { }
@@ -1190,6 +1288,7 @@ function initSearch(svg, states, tooltip, popup, signal) {
                 try { el.setAttribute('stroke', 'none'); el.setAttribute('stroke-width', '0'); el.style && (el.style.vectorEffect = null); } catch (e) { }
                 el.classList.add('state--active');
                 activeSearchState = el;
+                if (zoomController && zoomController.panToElement) zoomController.panToElement(el);
                 try {
                     let actLayer = svg.select('#active-state-layer');
                     if (actLayer.empty()) {
