@@ -8,7 +8,7 @@ const MAP_CATALOG = {
     thailand: {
         title: 'Hospital Projects in Thailand',
         svgUrl: 'images/thailand/thailand.svg',
-        logoUrl: 'images/thailand/logo-02.png',
+        logoUrl: 'images/logo-02.png',
         logoAlt: 'Saikang Medical Logo',
         thumbnail: 'images/thailand/thailand.svg',   // used on landing card
         description: 'Saikang Medical hospital bed and equipment supply projects across Thailand.',
@@ -184,8 +184,8 @@ const MAP_CATALOG = {
     philippines: {
         title: 'Hospital Projects in the Philippines',
         svgUrl: 'images/philippines/philippines.svg',
-        logoUrl: '',
-        logoAlt: '',
+        logoUrl: 'images/logo-02.png',
+        logoAlt: 'Saikang Medical Logo',
         thumbnail: 'images/philippines/philippines.svg',
         description: 'Saikang Medical hospital bed and equipment supply projects across the Philippines.',
 
@@ -220,9 +220,9 @@ const MAP_CATALOG = {
                 description: 'ACE Group stands as our flagship private hospital partner. We have established a long-term and stable cooperative relationship since we commenced collaboration back in 2022.',
                 x: 625.024,
                 y: 888.848,
-                images: ['images/philippines/butuan_allied_care/1.png',
+                images: ['images/philippines/butuan_allied_care/1.jpeg',
                     'images/philippines/butuan_allied_care/2.png',
-                    'images/philippines/butuan_allied_care/3.jpeg']
+                    'images/philippines/butuan_allied_care/3.png']
             },
             {
                 provinceId: 'PH-MNL',
@@ -246,11 +246,13 @@ const MAP_CATALOG = {
             {
                 provinceId: 'PH-MSR',
                 title: 'New MMG Hospital',
-                description: 'New Medical Mission Group Hospital (New MMG Hospital) is a private Level II general hospital in Solano, Nueva Vizcaya, Philippines, offering secondary healthcare services under the MMG Federation.',
+                description: 'New MMG Hospital is a professional medical facility in the Philippines, providing comprehensive medical services for local people. In this project, we provided a lot of surgical equipment and the customer was very satisfied with our shadowless lamp/operating table.',
                 x: 531.219,
                 y: 942.158,
-                images: ['images/philippines/cagayan_mission_group/1.png',
-                    'images/philippines/cagayan_mission_group/2.png']
+                images: ['images/philippines/cagayan_mission_group/1.jpeg',
+                    'images/philippines/cagayan_mission_group/2.jpeg',
+                    'images/philippines/cagayan_mission_group/3.jpeg',
+                    'images/philippines/cagayan_mission_group/4.jpeg']
             },
             {
                 provinceId: 'PH-CAG',
@@ -281,10 +283,8 @@ const MAP_CATALOG = {
                 description: 'New Medical Mission Group Hospital (New MMG Hospital) is a private Level II general hospital in Solano, Nueva Vizcaya, Philippines, offering secondary healthcare services under the MMG Federation.',
                 x: 531.219,
                 y: 942.158,
-                images: ['images/philippines/cagayan_nmg_hospital/1.jpeg',
-                    'images/philippines/cagayan_nmg_hospital/2.jpeg',
-                    'images/philippines/cagayan_nmg_hospital/3.jpeg',
-                    'images/philippines/cagayan_nmg_hospital/4.jpeg']
+                images: ['images/philippines/cagayan_mmg_hospital/1.png',
+                    'images/philippines/cagayan_mmg_hospital/2.png']
             },
             {
                 provinceId: 'PH-QUE',
@@ -293,9 +293,9 @@ const MAP_CATALOG = {
                 x: 298.984,
                 y: 462.425,
                 images: ['images/philippines/manila_eamc/1.jpeg',
-                    'images/philippines/manila_eamc/2.jpeg',
+                    'images/philippines/manila_eamc/2.png',
                     'images/philippines/manila_eamc/3.png',
-                    'images/philippines/manila_eamc/4.png',
+                    'images/philippines/manila_eamc/4.jpeg',
                     'images/philippines/manila_eamc/5.jpeg']
             },
             {
