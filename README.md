@@ -1,208 +1,328 @@
-# Interactive Map Projects
+# Interactive Project Maps
 
-A lightweight, hash-routed web app for displaying interactive maps with project hotspots. Built with vanilla JavaScript and D3.js, runs entirely in the browser—no backend required.
+A browser-based interactive map for showing project locations, with a local **Project Map Manager** for maintaining countries, hotspots, photos, and map data without editing JavaScript by hand.
 
-## Features
+The repository has two main parts:
 
-- **Multi-map support** – Add as many maps as you want using a simple catalog system
-- **Hash-based routing** – Navigate between maps using URL hashes (e.g., `#thailand`)
-- **Landing page** – Automatically generated card grid from your map catalog
-- **Interactive hotspots** – Click to see project details with photos
-- **Cluster markers** – Nearby hotspots automatically merge into a single circle showing a count. Click the circle to see all locations, then click a name to open its detail popup
-- **Image carousel** – Add multiple photos to any hotspot and the popup shows ← → navigation buttons automatically
-- **Zoom & pan** – Ctrl/Cmd + scroll to zoom, drag to pan
-- **Search** – Find provinces/regions with autocomplete suggestions
-- **Responsive** – Works on desktop, tablet, and mobile
+| Part | Purpose |
+|---|---|
+| **Public map** | The website visitors use to browse countries, project locations, photos, and project details. |
+| **Project Map Manager** | A local browser-based tool used to add or update countries, hotspots, coordinates, photos, and other map content. |
 
-## Quick Start
-
-1. **Start a local server:**
-   ```bash
-   python -m http.server
-   ```
-
-2. **Open in browser:**
-   ```
-   http://localhost:8000
-   ```
-
-3. **Navigate:**
-   - Landing page shows all available maps
-   - Click a card to view that map
-   - Click "← All Maps" to return to landing
-
-## Project Structure
-
-```
-├── index.html              # Main HTML file
-├── /data
-│   ├── catalog.js         # Map catalog and configuration
-│   ├── main.js            # Core map logic and interactions
-│   └── styles.css         # All styles
-└── /images
-    └── /thailand          # Map-specific assets
-        ├── thailand.svg   # SVG map file
-        ├── logo-02.png    # Logo image
-        └── *.jpg          # Hotspot photos
-```
-
-## Adding a New Map
-
-### 1. Prepare Your Assets
-
-Create a folder in `/images/` for your map:
-```
-/images
-  └── /vietnam
-      ├── vietnam.svg
-      ├── logo.png
-      └── [hotspot photos].jpg
-```
-
-### 2. Add to Catalog
-
-Open `data/catalog.js` and add a new entry:
-
-```javascript
-const MAP_CATALOG = {
-    thailand: { /* existing entry */ },
-    
-    // Add your new map here
-    vietnam: {
-        title: 'Projects in Vietnam',
-        svgUrl: 'images/vietnam/vietnam.svg',
-        logoUrl: 'images/vietnam/logo.png',
-        logoAlt: 'Company Logo',
-        thumbnail: 'images/vietnam/vietnam.svg',
-        description: 'Brief description for the landing card.',
-        
-        // Geographic bounds (must match SVG's mapsvg:geoViewBox)
-        geoBounds: {
-            minLon: 102.14,
-            maxLat: 23.39,
-            maxLon: 109.46,
-            minLat: 8.56
-        },
-        
-        // Color scheme (HSL values)
-        colorConfig: {
-            baseHue: 175,
-            sat: '50%',
-            minLight: 75,
-            maxLight: 85
-        },
-        
-        // Project locations
-        hotspots: [
-            {
-                provinceId: 'VN-01',        // SVG path ID
-                title: 'Hospital Name',
-                description: 'Project details here.',
-                x: 123.45,                  // SVG viewBox coordinates
-                y: 678.90,
-                imageUrl: 'images/vietnam/hospital.jpg'
-            }
-            // Add more hotspots...
-        ]
-    }
-};
-```
-
-## Hotspot Features
-
-### Cluster Markers
-
-Hotspots that are close together on the map are automatically grouped into a single blue circle with a number badge - no extra configuration needed.
-
-**How it works:**
-- On page load, every hotspot is checked against its neighbours
-- Any two hotspots within **8 SVG units** of each other are merged into one cluster circle
-- The badge shows how many locations are inside
-
-**Interaction:**
-1. Hover the cluster circle → a tooltip shows e.g. *"4 nearby hospitals"*
-2. Click the cluster circle → a popup lists all the hospital names
-3. Click a name → the normal detail popup opens for that location
-
-**Adjusting the threshold:**
-
-Open `data/main.js` and change this constant near the top of the hotspot section:
-
-```javascript
-const CLUSTER_THRESHOLD_VB = 8;  // increase to group more aggressively, decrease to split them up
-```
+The public map is built with vanilla JavaScript and D3.js. There is no application backend or build process required.
 
 ---
 
-### Multiple Images (Carousel)
+## Start Here
 
-Any hotspot can show more than one photo. When two or more images are listed the popup automatically adds ← → buttons and a counter (*"1 / 3"*)
+### If you want to update the map
+
+Use the **Project Map Manager**.
+
+Windows:
+
+```text
+launcher.bat
+```
+
+macOS:
+
+```text
+launcher.command
+```
+
+Start it from the repository root:
+
+```text
+python launcher.py
+```
+
+The manager opens locally in your browser and works directly with the checked-out repository on your computer.
+
+> **Important:** The manager does not commit, push, or deploy anything to GitHub automatically.
+
+For detailed instructions, see **[USER_GUIDE.md](USER_GUIDE.md)**.
 
 ---
 
-## SVG Map Requirements
+## Normal Workflow
 
-Your SVG file should have:
+Most updates follow the same process:
 
-1. **Province/region paths** with unique IDs:
-   ```html
-   <path id="TH-10" class="state" ... />
-   <path id="VN-HN" class="state" ... />
-   ```
+1. Start the Project Map Manager.
+2. Choose the country you want to work on.
+3. Import the standard Excel file, add a hotspot manually, or edit an existing hotspot.
+4. Add or manage photos.
+5. Check the marker position in the Map editor.
+6. Select **Validate** and fix any problems.
+7. Select **Review changes**.
+8. Select **Apply changes** when everything looks correct.
+9. Review the Git changes.
+10. Commit and push using the normal Git workflow.
 
-2. **Optional: Geographic metadata** in the SVG root:
-   ```html
-   <svg mapsvg:geoViewBox="97.34,5.61,105.64,20.46" ...>
-   ```
+The existing GitHub Action handles publishing the updated website after the changes are pushed.
 
-3. **Optional: Province names** as attributes:
-   ```html
-   <path id="TH-10" data-name="Bangkok" ... />
-   ```
+### When are files actually changed?
 
-## Configuration Tips
+Edits remain pending inside the manager until you select **Apply changes**.
 
-### Hotspot Coordinates
+This includes:
 
-Hotspot `x` and `y` values use SVG viewBox units. To find coordinates:
-1. Open your SVG in a browser
-2. Open browser console
-3. Click where you want the hotspot
-4. Run: `document.querySelector('svg').addEventListener('click', e => console.log(e.offsetX, e.offsetY))`
+- hotspot edits
+- imported Excel data
+- image changes
+- image reductions
+- SVG replacements
+- deletions
 
-### Color Schemes
+If you are unsure about an edit, you can discard the pending changes and reload the current repository files.
 
-Each map can have its own color palette defined in `colorConfig`:
-- `baseHue`: 0-360 (e.g., 175 for blue-green, 200 for blue)
-- `sat`: Saturation percentage
-- `minLight` / `maxLight`: Lightness range for province shading
+---
 
-## Browser Support
+## Validation
 
-- Modern browsers (Chrome, Firefox, Safari, Edge)
-- Requires JavaScript enabled
-- No Internet Explorer support
+Before applying changes, use **Validate**.
 
-## Dependencies
+The manager uses three status levels:
 
-- **D3.js v7** – Loaded from CDN for SVG manipulation and interactions
-- No build tools or npm required
+| Status | Meaning |
+|---|---|
+| 🟢 **Green — Valid** | Required information is present and no review issue was found. |
+| 🟡 **Yellow — Needs review** | The item can still be saved, but something should be checked. |
+| 🔴 **Red — Invalid** | A required value is missing or invalid. The problem must be fixed before changes can be applied. |
+
+Validation checks things such as coordinates, province/state matching, possible duplicates, nearby markers, image issues, and map consistency.
+
+---
+
+## Managing Hotspots
+
+A hotspot represents a project or facility shown on the map.
+
+The required information is:
+
+- Facility name
+- Latitude
+- Longitude
+- Province/state
+
+The manager automatically generates the SVG `x/y` position from the latitude and longitude.
+
+Other information such as city/region, year, address, description, and photos is optional.
+
+### Excel Import
+
+Select **Import Excel** while the correct country is active.
+
+The standard spreadsheet can contain:
+
+```text
+Country
+City
+Hospital Name
+Year
+Address
+Case Description
+Latitude
+Longitude
+Image
+```
+
+The `Image` column is only used as a cutoff marker. Photos are added separately through the manager.
+
+When an updated spreadsheet is imported, existing hotspots are compared with the imported rows and shown as:
+
+```text
+New
+Update
+Unchanged
+Conflict
+```
+
+Existing photos are preserved when a hotspot is updated.
+
+---
+
+## Photos
+
+Photos can be dragged directly onto a hotspot or added with **Add images**.
+
+A preferred maximum of **4 MB per image** is used as a warning threshold.
+
+Images are never reduced automatically. Reduction only happens when you explicitly choose **Reduce** for an image.
+
+Photos can also be marked:
+
+- **Used** — appears in the public hotspot carousel.
+- **Unused** — remains in the project but is hidden from the public map.
+
+When a hotspot has multiple used images, the public map automatically displays them as a carousel.
+
+---
+
+## Map Editor
+
+The Map editor lets you visually check and correct hotspot positions.
+
+You can:
+
+- zoom with the `+` and `−` controls
+- use **Fit** to return to the full-country view
+- drag the map to pan
+- hover over hotspots to inspect them
+- drag hotspots to correct their location
+
+Moving a hotspot updates its latitude, longitude, SVG position, and detected province/state together.
+
+**Reset selected** restores only the selected hotspot's geographic position and province/state to its editing baseline. Text and image changes are not removed.
+
+---
+
+## Adding a New Country
+
+Use the `+` button beside **Countries**.
+
+A new country requires:
+
+```text
+Country name
+Country slug (used for link/url)
+SVG map
+```
+
+The manager reads the SVG geographic bounds, dimensions, and province/state IDs automatically.
+
+Hotspots do not need to be added immediately. A country can be created with only its SVG and populated later.
+
+---
+
+## Public Map
+
+The public site automatically builds its landing page from the map catalog.
+
+Users can:
+
+- browse available country maps
+- open project hotspots
+- view project information and photos
+- search for provinces or regions
+- zoom and pan the map
+- open direct links to individual countries
+- view multiple nearby hotspots through cluster markers
+
+Country pages use hash-based routes such as:
+
+```text
+#thailand
+```
+
+The Project Map Manager also displays the generated share route for the active country so it can be copied directly.
+
+---
+
+## Run the Public Map Locally
+
+From the repository root:
+
+```bash
+python -m http.server
+```
+
+Then open:
+
+```text
+http://localhost:8000
+```
+
+The landing page shows all available maps. Select a country card to open its map.
+
+---
+
+## Repository Structure
+
+### `data/catalog.js`
+
+Contains the map catalog, country configuration, and hotspot data used by the public site.
+
+### `data/main.js`
+
+Contains the main public-map behaviour and interactions.
+
+### `images/<country>/`
+
+Contains the SVG map and visual assets belonging to each country.
+
+The Project Map Manager maintains this existing structure rather than creating a separate data format.
+
+---
+
+## SVG Maps
+
+Country SVG files should contain province or region paths with unique IDs.
+
+Example:
+
+```html
+<path id="TH-10" class="state" ... />
+```
+
+MapSVG geographic metadata can also be included:
+
+```html
+<svg mapsvg:geoViewBox="97.34,5.61,105.64,20.46" ...>
+```
+
+Province names can optionally be stored with attributes such as:
+
+```html
+<path id="TH-10" data-name="Bangkok" ... />
+```
+
+The manager supports SVGs with either a normal `viewBox` or numeric width/height together with `mapsvg:geoViewBox`.
+
+---
+
+## Technical Notes
+
+The public map:
+
+- uses vanilla JavaScript
+- uses D3.js v7 for SVG manipulation and interactions
+- uses hash-based navigation
+- requires no npm installation or build step
+- works in modern versions of Chrome, Firefox, Safari, and Edge
+
+Nearby hotspots are automatically grouped into cluster markers. Hotspots can also contain multiple images, which automatically enables the public image carousel.
+
+The Project Map Manager writes to the same `data/catalog.js` and `images/<country>/...` structure used by the public site.
+
+Excel `.xlsx` files are parsed locally by `start_manager.py`.
+
+---
+
+## Detailed User Guide
+
+This README is intended as the main overview of the project.
+
+For step-by-step instructions on importing spreadsheets, editing coordinates, replacing SVGs, managing images, validation, unsaved changes, and other day-to-day tasks, see:
+
+**[USER_GUIDE.md](USER_GUIDE.md)**
+
+---
 
 ## License
 
-The source code in this repository is licensed under the MIT License.
-See the `LICENSE` file for details.
+The source code in this repository is licensed under the **MIT License**. See the `LICENSE` file for details.
 
-### Assets / Images
 
-All images, artwork, and other visual assets included in this repository
-are **NOT** covered by the MIT License, **except where explicitly stated otherwise**.
+### Others & Artwork
 
-All rights to these assets are reserved. They may not be used, copied,
-modified, or redistributed without explicit written permission from the
-copyright holder.
+Other artwork, and visual assets (open source) included in the repository are **not covered by the MIT License unless explicitly stated otherwise**.
 
-#### SVG Map Files
 
-The SVG files used as maps **are licensed under the MIT License**
-and may be used under the same terms as the source code.
+### Images
+
+image files are also licensed under the MIT License.
+
+
+All rights to those assets are reserved and they may not be used, copied, modified, or redistributed without permission from the copyright holder.

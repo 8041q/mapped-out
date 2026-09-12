@@ -1,23 +1,31 @@
 <!DOCTYPE html>
-<html lang="en">
+<html lang="en" data-font-size="medium">
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Map Content Manager</title>
+    <title>Project Map Manager</title>
     <link rel="stylesheet" href="manager.css">
-    <script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
 </head>
 <body>
     <header class="app-header">
-        <div>
-            <div class="eyebrow">SAIKANG Medical Projects</div>
-            <h1>Map Content Manager</h1>
+        <div class="app-brand">
+            <div class="brand-kicker">SAIKANG Medical</div>
+            <div class="brand-title-row">
+                <h1>Project Map Manager</h1>
+            </div>
         </div>
         <div class="header-actions">
-            <span id="repo-status" class="repo-status">Detecting repository…</span>
-            <button id="reset-changes" class="button button-secondary" disabled>Reset Unsaved</button>
+            <span id="repo-status" class="repo-status"><i class="repo-dot"></i><span>Detecting repository…</span></span>
+            <span id="dirty-status" class="dirty-status hidden"><i></i>Unsaved changes</span>
+            <div class="font-size-control" role="group" aria-label="Text size">
+                <button type="button" data-font-size="small" aria-pressed="false">Small</button>
+                <button type="button" data-font-size="medium" aria-pressed="true">Medium</button>
+                <button type="button" data-font-size="large" aria-pressed="false">Large</button>
+            </div>
+            <button id="help-button" class="button button-quiet">Help</button>
+            <button id="reset-changes" class="button button-quiet" disabled>Discard changes</button>
             <button id="validate-all" class="button button-secondary" disabled>Validate</button>
-            <button id="save-all" class="button button-primary" disabled>Save Changes</button>
+            <button id="save-all" class="button button-primary" disabled>Review changes</button>
         </div>
     </header>
 
@@ -45,15 +53,24 @@
             <div id="country-workspace" class="hidden">
                 <div class="country-header">
                     <div>
-                        <div class="eyebrow" id="country-slug"></div>
+                        <div class="country-route-label" id="country-slug"></div>
                         <h2 id="country-title"></h2>
                         <p id="country-description"></p>
                     </div>
                     <div class="country-actions">
-                        <button id="country-settings" class="button button-secondary">Map Settings</button>
-                        <button id="replace-svg" class="button button-secondary">Replace SVG</button>
                         <button id="import-excel" class="button button-secondary">Import Excel</button>
-                        <button id="add-hotspot" class="button button-primary">Add Hotspot</button>
+                        <button id="add-hotspot" class="button button-primary button-with-icon"><svg class="button-icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 5v14M5 12h14" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"/></svg>Add hotspot</button>
+                        <details class="action-menu" id="country-tools-menu">
+                            <summary class="button button-quiet">More <span aria-hidden="true">⌄</span></summary>
+                            <div class="action-menu-popover">
+                                <div class="action-menu-label">Map</div>
+                                <button id="country-settings" type="button">Map settings</button>
+                                <button id="replace-svg" type="button">Replace country SVG</button>
+                                <div class="action-menu-separator"></div>
+                                <div class="action-menu-label">Images</div>
+                                <button id="cleanup-unused-images" type="button">Find unused images</button>
+                            </div>
+                        </details>
                     </div>
                 </div>
 
@@ -76,18 +93,16 @@
                                     <option value="missing-images">Missing images</option>
                                     <option value="imported-session">Imported this session</option>
                                 </select>
-                                <input id="hotspot-search" class="search-input" type="search" placeholder="Search facilities or cities">
+                                <input id="hotspot-search" class="search-input" type="search" placeholder="Search by facility, city or province">
                             </div>
                         </div>
                         <div id="bulk-toolbar" class="bulk-toolbar hidden">
                             <label class="bulk-select-all"><input id="bulk-select-all" type="checkbox"> <span id="bulk-selected-count">0 selected</span></label>
                             <select id="bulk-province" class="compact-select" aria-label="Province for selected hotspots"><option value="">Set province…</option></select>
-                            <button id="bulk-apply-province" type="button" class="button button-secondary button-small">Apply Province</button>
-                            <button id="bulk-validate" type="button" class="button button-secondary button-small">Validate Selected</button>
-                            <button id="bulk-remove-images" type="button" class="button button-secondary button-small">Remove Images</button>
-                            <button id="bulk-delete" type="button" class="button button-danger-ghost button-small">Delete Selected</button>
-                            <button id="reduce-oversized-images" type="button" class="button button-secondary button-small">Reduce &gt; 4 MB</button>
-                            <button id="cleanup-unused-images" type="button" class="button button-secondary button-small">Clean Unused Images</button>
+                            <button id="bulk-apply-province" type="button" class="button button-secondary button-small">Set province</button>
+                            <button id="bulk-validate" type="button" class="button button-secondary button-small">Validate selected</button>
+                            <button id="bulk-remove-images" type="button" class="button button-secondary button-small">Remove images</button>
+                            <button id="bulk-delete" type="button" class="button button-danger-ghost button-small">Delete selected</button>
                         </div>
                         <div id="hotspot-list" class="hotspot-list"></div>
                     </section>
@@ -101,20 +116,20 @@
                         <form id="hotspot-editor" class="hidden" autocomplete="off">
                             <div class="editor-heading">
                                 <div>
-                                    <h3>Edit Hotspot</h3>
+                                    <h3>Hotspot details</h3>
                                     <span id="hotspot-status-badge" class="status-badge"></span>
                                 </div>
                                 <button id="delete-hotspot" type="button" class="button button-danger-ghost">Delete</button>
                             </div>
 
                             <label class="field">
-                                <span>Hospital / Facility Name <b class="required-mark">*</b></span>
+                                <span>Hospital / facility name <b class="required-mark">*</b></span>
                                 <input id="field-title" type="text" required>
                             </label>
 
                             <div class="two-columns">
                                 <label class="field">
-                                    <span>City / Region</span>
+                                    <span>City / region</span>
                                     <input id="field-city" type="text">
                                 </label>
                                 <label class="field">
@@ -129,7 +144,7 @@
                             </label>
 
                             <label class="field">
-                                <span>Case Description</span>
+                                <span>Case description</span>
                                 <textarea id="field-description" rows="5"></textarea>
                             </label>
 
@@ -153,12 +168,12 @@
 
                             <div class="two-columns">
                                 <label class="field">
-                                    <span>Province / State <b class="required-mark">*</b></span>
+                                    <span>Province / state <b class="required-mark">*</b></span>
                                     <select id="field-province" required></select>
                                 </label>
                                 <div class="field generated-field">
                                     <span>Generated SVG position</span>
-                                    <div><code id="field-xy">—</code></div>
+                                    <div><code id="field-xy">-</code></div>
                                 </div>
                             </div>
 
@@ -173,7 +188,7 @@
                                         <input id="image-picker" type="file" accept="image/*" multiple hidden>
                                     </label>
                                 </div>
-                                <div id="image-dropzone" class="dropzone">Drop images here</div>
+                                <div id="image-dropzone" class="dropzone"><strong>Drop images here</strong><span>or use “Add images” above</span></div>
                                 <div id="image-list" class="image-list"></div>
                             </div>
                         </form>
@@ -182,10 +197,10 @@
                     <section class="panel preview-panel">
                         <div class="panel-heading">
                             <div>
-                                <h3>Map Editor</h3>
-                                <span class="muted">Full-width preview. Select and drag the larger hotspot handles to correct positions.</span>
+                                <h3>Map editor</h3>
+                                <span class="muted">Use + / − to zoom · drag the map to pan · drag a hotspot to move it.</span>
                             </div>
-                            <button id="reset-position" class="button button-secondary" disabled>Recalculate Selected</button>
+                            <button id="reset-position" class="button button-secondary" disabled>Reset selected</button>
                         </div>
                         <div id="map-stage" class="map-stage">
                             <div id="map-preview" class="map-preview">
@@ -210,12 +225,12 @@
     </main>
 
     <input id="svg-picker" type="file" accept="image/svg+xml,.svg" hidden>
-    <input id="excel-picker" type="file" accept=".xlsx,.xls" hidden>
+    <input id="excel-picker" type="file" accept=".xlsx" hidden>
 
     <dialog id="country-dialog" class="dialog">
         <form method="dialog" id="country-form">
             <div class="dialog-heading">
-                <h2 id="country-dialog-title">Add Country</h2>
+                <h2 id="country-dialog-title">Add country</h2>
                 <button type="button" class="icon-button" data-close-dialog="country-dialog" aria-label="Close">×</button>
             </div>
             <div class="dialog-body">
@@ -274,7 +289,7 @@
             </div>
             <div class="dialog-actions">
                 <button type="button" class="button button-secondary" data-close-dialog="country-dialog">Cancel</button>
-                <button id="country-submit" type="submit" class="button button-primary" value="default">Save Map</button>
+                <button id="country-submit" type="submit" class="button button-primary" value="default">Save</button>
             </div>
         </form>
     </dialog>
@@ -295,7 +310,7 @@
 
     <dialog id="save-dialog" class="dialog dialog-wide">
         <div class="dialog-heading">
-            <h2>Review Changes</h2>
+            <h2>Review changes</h2>
             <button class="icon-button" data-close-dialog="save-dialog" aria-label="Close">×</button>
         </div>
         <div class="dialog-body">
@@ -304,13 +319,13 @@
         </div>
         <div class="dialog-actions">
             <button class="button button-secondary" data-close-dialog="save-dialog">Cancel</button>
-            <button id="confirm-save" class="button button-primary">Apply Changes</button>
+            <button id="confirm-save" class="button button-primary">Apply changes</button>
         </div>
     </dialog>
 
     <dialog id="unsaved-dialog" class="dialog">
         <div class="dialog-heading">
-            <h2>Unsaved Changes</h2>
+            <h2>Unsaved changes</h2>
             <button class="icon-button" data-close-dialog="unsaved-dialog" aria-label="Close">×</button>
         </div>
         <div class="dialog-body">
@@ -318,15 +333,15 @@
             <p class="muted">Save them before switching countries, discard them, or stay here and continue editing.</p>
         </div>
         <div class="dialog-actions">
-            <button id="unsaved-stay" class="button button-secondary">Stay Here</button>
-            <button id="unsaved-discard" class="button button-danger-ghost">Discard &amp; Switch</button>
-            <button id="unsaved-save" class="button button-primary">Review &amp; Save</button>
+            <button id="unsaved-stay" class="button button-secondary">Stay here</button>
+            <button id="unsaved-discard" class="button button-danger-ghost">Discard &amp; switch</button>
+            <button id="unsaved-save" class="button button-primary">Review changes</button>
         </div>
     </dialog>
 
     <dialog id="delete-dialog" class="dialog">
         <div class="dialog-heading">
-            <h2>Delete Hotspot</h2>
+            <h2>Delete hotspot</h2>
             <button class="icon-button" data-close-dialog="delete-dialog" aria-label="Close">×</button>
         </div>
         <div class="dialog-body">
@@ -379,6 +394,32 @@
             <button class="button button-secondary" data-close-dialog="image-reduce-dialog">Cancel</button>
             <button id="confirm-image-reduce" class="button button-primary">Reduce Image</button>
         </div>
+    </dialog>
+
+    <dialog id="help-dialog" class="dialog dialog-wide help-dialog">
+        <div class="dialog-heading">
+            <div>
+                <h2>How to use the map manager</h2>
+                <p>Most updates follow the same four-step workflow.</p>
+            </div>
+            <button class="icon-button" data-close-dialog="help-dialog" aria-label="Close">×</button>
+        </div>
+        <div class="dialog-body help-body">
+            <div class="workflow-steps">
+                <div class="workflow-step"><span>1</span><div><strong>Choose a country</strong><p>Select an existing map on the left, or add a new country with its SVG.</p></div></div>
+                <div class="workflow-step"><span>2</span><div><strong>Add or update hotspots</strong><p>Import the standard Excel file or add a hotspot manually. Review anything shown in yellow or red.</p></div></div>
+                <div class="workflow-step"><span>3</span><div><strong>Add photos and check the map</strong><p>Drop photos onto each hotspot. Use the map editor to confirm marker positions and provinces.</p></div></div>
+                <div class="workflow-step"><span>4</span><div><strong>Validate, review, then apply</strong><p>Run validation, review the file changes, then choose Apply changes. Commit and push with Git as usual.</p></div></div>
+            </div>
+            <div class="help-grid">
+                <section><h3>Status colours</h3><p><i class="legend-dot ok"></i><strong>Green</strong> - ready.</p><p><i class="legend-dot warning"></i><strong>Yellow</strong> - usable, but worth checking.</p><p><i class="legend-dot error"></i><strong>Red</strong> - fix before applying changes.</p></section>
+                <section><h3>Images</h3><p>Images are never compressed automatically. Files over 4 MB are flagged so you can reduce them individually if useful.</p><p>Use the Used / Unused switch to keep a file in the project without showing it on the public map. Reduced images stay temporary until you apply the final changes.</p></section>
+                <section><h3>Excel imports</h3><p>The manager ignores the Image column and everything after it. Existing matches are merged and their photos are kept.</p><p>An import only stops after five consecutive empty rows.</p></section>
+                <section><h3>Map editor</h3><p>Use + / − to zoom. Drag background: pan. Drag a marker: move it. Hover a marker: identify the facility and coordinates.</p></section>
+            </div>
+            <p class="help-footnote">The full user guide is included at <code>manager/USER_GUIDE.md</code>.</p>
+        </div>
+        <div class="dialog-actions"><button class="button button-primary" data-close-dialog="help-dialog">Got it</button></div>
     </dialog>
 
     <div id="toast" class="toast" role="status" aria-live="polite"></div>

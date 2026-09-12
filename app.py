@@ -1,16 +1,14 @@
 #!/usr/bin/env python3
-"""Run the Map Content Manager from the repository root.
+# Run the Map Content Manager from the repository root.
 
-The manager is intentionally local-only. This server exposes a very small file API to the
-manager UI so it can read/write files inside the repository without asking the user to pick
-the repository folder in the browser. The repository root is always the folder containing
-this script, so shortcuts can launch the script without changing that behavior.
-"""
+# The manager is intentionally local-only. This server exposes a very small file API to the
+# manager UI so it can read/write files inside the repository.
 
 from __future__ import annotations
 
 import contextlib
 import hashlib
+import io
 import json
 import mimetypes
 import os
@@ -18,11 +16,13 @@ import socket
 import secrets
 import shutil
 import tempfile
+import zipfile
 import threading
 import webbrowser
 from http import HTTPStatus
 from http.server import SimpleHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
+from xml.etree import ElementTree as ET
 from urllib.parse import parse_qs, unquote, urlparse
 
 ROOT = Path(__file__).resolve().parent
@@ -75,6 +75,108 @@ def safe_repo_path(raw_path: str) -> Path:
     except ValueError as exc:
         raise ValueError("Path is outside the repository.") from exc
     return candidate
+
+
+def _xlsx_column_index(cell_ref: str) -> int:
+    letters = "".join(ch for ch in (cell_ref or "") if ch.isalpha()).upper()
+    if not letters:
+        return 0
+    value = 0
+    for ch in letters:
+        if not ("A" <= ch <= "Z"):
+            break
+        value = value * 26 + (ord(ch) - ord("A") + 1)
+    return max(0, value - 1)
+
+
+def parse_xlsx_rows(data: bytes, *, max_rows: int = 10000, max_columns: int = 256) -> list[list[str]]:
+    try:
+        workbook = zipfile.ZipFile(io.BytesIO(data))
+    except zipfile.BadZipFile as exc:
+        raise ValueError("The selected file is not a valid .xlsx workbook.") from exc
+
+    with workbook:
+        names = set(workbook.namelist())
+        if "xl/workbook.xml" not in names:
+            raise ValueError("The workbook is missing xl/workbook.xml.")
+
+        shared_strings: list[str] = []
+        if "xl/sharedStrings.xml" in names:
+            root = ET.fromstring(workbook.read("xl/sharedStrings.xml"))
+            ns = {"a": "http://schemas.openxmlformats.org/spreadsheetml/2006/main"}
+            for item in root.findall("a:si", ns):
+                shared_strings.append("".join(node.text or "" for node in item.findall(".//a:t", ns)))
+
+        workbook_root = ET.fromstring(workbook.read("xl/workbook.xml"))
+        main_ns = "http://schemas.openxmlformats.org/spreadsheetml/2006/main"
+        rel_ns = "http://schemas.openxmlformats.org/officeDocument/2006/relationships"
+        first_sheet = workbook_root.find(f".//{{{main_ns}}}sheet")
+        if first_sheet is None:
+            raise ValueError("Excel file has no worksheets.")
+        rel_id = first_sheet.attrib.get(f"{{{rel_ns}}}id")
+        if not rel_id:
+            raise ValueError("Could not locate the first worksheet.")
+
+        rel_path = "xl/_rels/workbook.xml.rels"
+        if rel_path not in names:
+            raise ValueError("Workbook relationships are missing.")
+        rel_root = ET.fromstring(workbook.read(rel_path))
+        target = None
+        for rel in rel_root:
+            if rel.attrib.get("Id") == rel_id:
+                target = rel.attrib.get("Target")
+                break
+        if not target:
+            raise ValueError("Could not resolve the first worksheet.")
+        target = target.replace("\\", "/").lstrip("/")
+        sheet_path = target if target.startswith("xl/") else f"xl/{target}"
+        # Relationship targets may contain ../ segments. Normalize without allowing escape from xl/.
+        parts: list[str] = []
+        for part in sheet_path.split("/"):
+            if part in ("", "."):
+                continue
+            if part == "..":
+                if parts:
+                    parts.pop()
+                continue
+            parts.append(part)
+        sheet_path = "/".join(parts)
+        if not sheet_path.startswith("xl/") or sheet_path not in names:
+            raise ValueError("Could not read the first worksheet data.")
+
+        sheet_root = ET.fromstring(workbook.read(sheet_path))
+        ns = {"a": main_ns}
+        rows: list[list[str]] = []
+        for row_number, row in enumerate(sheet_root.findall(".//a:sheetData/a:row", ns), start=1):
+            if row_number > max_rows:
+                raise ValueError(f"Excel worksheet exceeds the supported {max_rows:,}-row limit.")
+            values: list[str] = []
+            for cell in row.findall("a:c", ns):
+                index = _xlsx_column_index(cell.attrib.get("r", ""))
+                if index >= max_columns:
+                    continue
+                while len(values) <= index:
+                    values.append("")
+                cell_type = cell.attrib.get("t", "")
+                value_node = cell.find("a:v", ns)
+                if cell_type == "inlineStr":
+                    text = "".join(node.text or "" for node in cell.findall(".//a:t", ns))
+                elif value_node is None:
+                    text = ""
+                else:
+                    raw = value_node.text or ""
+                    if cell_type == "s":
+                        try:
+                            text = shared_strings[int(raw)]
+                        except (ValueError, IndexError):
+                            text = raw
+                    elif cell_type == "b":
+                        text = "TRUE" if raw == "1" else "FALSE"
+                    else:
+                        text = raw
+                values[index] = text
+            rows.append(values)
+        return rows
 
 
 class ManagerRequestHandler(SimpleHTTPRequestHandler):
@@ -190,6 +292,7 @@ class ManagerRequestHandler(SimpleHTTPRequestHandler):
             f"{API_PREFIX}/write", f"{API_PREFIX}/delete",
             f"{API_PREFIX}/temp/write", f"{API_PREFIX}/temp/apply",
             f"{API_PREFIX}/temp/delete", f"{API_PREFIX}/temp/clear",
+            f"{API_PREFIX}/excel/parse",
         }
         if parsed.path not in allowed:
             self.send_error(HTTPStatus.NOT_FOUND)
@@ -198,6 +301,16 @@ class ManagerRequestHandler(SimpleHTTPRequestHandler):
         try:
             if self.headers.get("X-Manager-Token") != API_TOKEN:
                 self._send_json({"ok": False, "error": "Invalid manager token."}, HTTPStatus.FORBIDDEN)
+                return
+
+            if parsed.path == f"{API_PREFIX}/excel/parse":
+                length = int(self.headers.get("Content-Length", "0"))
+                if length <= 0:
+                    raise ValueError("Excel upload is empty.")
+                if length > 25 * 1024 * 1024:
+                    raise ValueError("Excel workbook is larger than the supported 25 MB limit.")
+                rows = parse_xlsx_rows(self.rfile.read(length))
+                self._send_json({"ok": True, "rows": rows})
                 return
 
             if parsed.path == f"{API_PREFIX}/temp/clear":

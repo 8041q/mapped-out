@@ -1,4 +1,4 @@
-// MAP_CATALOG — Central lookup table for all maps.
+// MAP_CATALOG - Central lookup table for all maps.
 // Each key is a URL hash slug (e.g. #thailand → MAP_CATALOG['thailand']).
 // Entries are loaded on demand (no preloading or hardcoded <img> tags).
 // To add a map: create /images/<slug>/ with the SVG and images, then add an entry below.
@@ -13,7 +13,7 @@ const MAP_CATALOG = {
         thumbnail: 'images/thailand/thailand.svg',   // used on landing card
         description: 'Saikang Medical hospital bed and equipment supply projects across Thailand.',
 
-        // Geographic bounding box — must match the SVG's mapsvg:geoViewBox
+        // Geographic bounding box - must match the SVG's mapsvg:geoViewBox
         geoBounds: {
             minLon: 97.344728,
             maxLat: 20.463430,
@@ -29,7 +29,7 @@ const MAP_CATALOG = {
             maxLight: 85
         },
 
-        // Hotspots — coordinates are in SVG viewBox units
+        // Hotspots - coordinates are in SVG viewBox units
         hotspots: [
             {
                 provinceId: 'TH-41',

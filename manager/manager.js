@@ -35,6 +35,7 @@ const state = {
     originalCatalogText: '',
     activeSlug: null,
     activeHotspotIndex: null,
+    mapHotspotIndex: null,       // map-only focus; never changes the editor/list selection
     svgSources: new Map(),
     svgMeta: new Map(),
     stagedWrites: new Map(),       // repo-relative path -> Blob/File/string
@@ -56,20 +57,27 @@ const state = {
 
 const els = {};
 
+const customSelectState = {
+    activeSelect: null,
+    popover: null,
+};
+
 window.addEventListener('DOMContentLoaded', () => {
+    applyStoredFontSize();
     cacheElements();
     bindEvents();
+    initializeCustomSelects();
     initializeRepository();
 });
 
 function cacheElements() {
     const ids = [
-        'unsupported', 'repo-status', 'reset-changes', 'validate-all', 'save-all', 'add-country',
+        'unsupported', 'repo-status', 'dirty-status', 'help-button', 'help-dialog', 'reset-changes', 'validate-all', 'save-all', 'add-country',
         'country-list', 'workspace', 'workspace-empty', 'country-workspace', 'country-slug',
         'country-title', 'country-description', 'country-settings', 'replace-svg', 'import-excel',
         'add-hotspot', 'country-health', 'import-history', 'hotspot-count', 'hotspot-search', 'hotspot-filter', 'hotspot-list',
         'bulk-toolbar', 'bulk-select-all', 'bulk-selected-count', 'bulk-province', 'bulk-apply-province',
-        'bulk-validate', 'bulk-remove-images', 'bulk-delete', 'reduce-oversized-images', 'cleanup-unused-images',
+        'bulk-validate', 'bulk-remove-images', 'bulk-delete', 'cleanup-unused-images',
         'editor-empty', 'hotspot-editor', 'hotspot-status-badge', 'delete-hotspot', 'field-title',
         'field-city', 'field-year', 'field-address', 'field-description', 'field-lat', 'field-lon',
         'field-province', 'field-xy', 'coordinate-message', 'apply-swap', 'image-picker',
@@ -90,7 +98,11 @@ function toCamel(id) {
 }
 
 function bindEvents() {
+    document.querySelectorAll('[data-font-size]').forEach(button => {
+        button.addEventListener('click', () => setFontSize(button.dataset.fontSize));
+    });
     els.addCountry.addEventListener('click', () => openCountryDialog('add'));
+    els.helpButton.addEventListener('click', () => els.helpDialog.showModal());
     els.countrySettings.addEventListener('click', () => openCountryDialog('edit'));
     els.replaceSvg.addEventListener('click', () => els.svgPicker.click());
     els.importExcel.addEventListener('click', () => els.excelPicker.click());
@@ -102,8 +114,10 @@ function bindEvents() {
     els.bulkValidate.addEventListener('click', validateBulkSelection);
     els.bulkRemoveImages.addEventListener('click', removeImagesFromBulkSelection);
     els.bulkDelete.addEventListener('click', deleteBulkSelection);
-    els.reduceOversizedImages.addEventListener('click', reduceOversizedImagesForCountry);
     els.cleanupUnusedImages.addEventListener('click', cleanupUnusedImages);
+    [els.countrySettings, els.replaceSvg, els.cleanupUnusedImages].forEach(button => {
+        button.addEventListener('click', () => button.closest('details')?.removeAttribute('open'));
+    });
     els.resetChanges.addEventListener('click', resetUnsavedChanges);
     els.validateAll.addEventListener('click', runValidationDialog);
     els.saveAll.addEventListener('click', prepareSaveDialog);
@@ -116,7 +130,7 @@ function bindEvents() {
     els.confirmImport.addEventListener('click', confirmExcelImport);
     els.confirmImageReduce.addEventListener('click', confirmImageReduction);
     els.imagePicker.addEventListener('change', e => addImagesToSelected(Array.from(e.target.files || [])));
-    els.resetPosition.addEventListener('click', recalculateSelectedHotspot);
+    els.resetPosition.addEventListener('click', resetSelectedHotspot);
     els.applySwap.addEventListener('click', applySuggestedSwap);
     ['mapHue', 'mapSat', 'mapMinLight', 'mapMaxLight'].forEach(key => {
         els[key].addEventListener('input', updateColorPreviewFromFields);
@@ -152,6 +166,234 @@ function bindEvents() {
     document.querySelectorAll('[data-close-dialog]').forEach(button => {
         button.addEventListener('click', () => document.getElementById(button.dataset.closeDialog).close());
     });
+    document.addEventListener('click', event => {
+        document.querySelectorAll('details.action-menu[open]').forEach(menu => {
+            if (!menu.contains(event.target)) menu.removeAttribute('open');
+        });
+    });
+}
+
+
+function initializeCustomSelects(root = document) {
+    root.querySelectorAll('select:not([data-custom-select])').forEach(enhanceCustomSelect);
+    if (!customSelectState.popover) {
+        const popover = document.createElement('div');
+        popover.className = 'custom-select-popover hidden';
+        popover.setAttribute('role', 'listbox');
+        document.body.appendChild(popover);
+        customSelectState.popover = popover;
+
+        document.addEventListener('pointerdown', event => {
+            const active = customSelectState.activeSelect;
+            if (!active) return;
+            const wrapper = active.closest('.custom-select');
+            if (wrapper?.contains(event.target) || popover.contains(event.target)) return;
+            closeCustomSelect();
+        });
+        // Keep an open menu attached to its field while the page or any ancestor scrolls.
+        // Closing on `scroll` was unreliable because real wheel/trackpad scrolling can scroll
+        // both the option list and a parent in the same gesture (scroll chaining).
+        const repositionOpenSelect = () => {
+            const active = customSelectState.activeSelect;
+            if (!active || customSelectState.repositionQueued) return;
+            customSelectState.repositionQueued = true;
+            requestAnimationFrame(() => {
+                customSelectState.repositionQueued = false;
+                if (customSelectState.activeSelect === active) positionCustomSelectPopover(active);
+            });
+        };
+        window.addEventListener('resize', repositionOpenSelect);
+        window.addEventListener('scroll', repositionOpenSelect, true);
+        popover.addEventListener('wheel', event => {
+            // Never let a wheel gesture inside the menu be interpreted as an outside action.
+            event.stopPropagation();
+        }, { passive: true });
+    }
+}
+
+function enhanceCustomSelect(select) {
+    if (!select || select.dataset.customSelect) return;
+    select.dataset.customSelect = 'true';
+    const wrapper = document.createElement('div');
+    wrapper.className = 'custom-select';
+    if (select.classList.contains('compact-select')) wrapper.classList.add('compact');
+    select.parentNode.insertBefore(wrapper, select);
+    wrapper.appendChild(select);
+    select.classList.add('native-select-hidden');
+
+    const button = document.createElement('button');
+    button.type = 'button';
+    button.className = 'custom-select-button';
+    button.setAttribute('aria-haspopup', 'listbox');
+    button.setAttribute('aria-expanded', 'false');
+    button.innerHTML = '<span class="custom-select-label"></span><svg class="custom-select-chevron" viewBox="0 0 16 16" aria-hidden="true"><path d="m3.5 6 4.5 4 4.5-4" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/></svg>';
+    wrapper.appendChild(button);
+
+    button.addEventListener('click', () => {
+        if (select.disabled) return;
+        if (customSelectState.activeSelect === select) closeCustomSelect();
+        else openCustomSelect(select);
+    });
+    button.addEventListener('keydown', event => {
+        if (['Enter', ' ', 'ArrowDown', 'ArrowUp'].includes(event.key)) {
+            event.preventDefault();
+            openCustomSelect(select);
+        }
+    });
+    select.addEventListener('change', () => refreshCustomSelect(select));
+
+    const observer = new MutationObserver(() => {
+        refreshCustomSelect(select);
+        if (customSelectState.activeSelect === select) renderCustomSelectPopover(select);
+    });
+    observer.observe(select, { childList: true, subtree: true, attributes: true, attributeFilter: ['disabled', 'label'] });
+    select._customSelectObserver = observer;
+    refreshCustomSelect(select);
+}
+
+function refreshCustomSelect(select) {
+    if (!select?.dataset.customSelect) return;
+    const wrapper = select.closest('.custom-select');
+    const button = wrapper?.querySelector('.custom-select-button');
+    if (!button) return;
+    const selected = select.options[select.selectedIndex];
+    button.querySelector('.custom-select-label').textContent = selected?.textContent || 'Select…';
+    button.disabled = select.disabled;
+    button.setAttribute('aria-label', select.getAttribute('aria-label') || selected?.textContent || 'Select option');
+}
+
+function refreshAllCustomSelects() {
+    document.querySelectorAll('select[data-custom-select]').forEach(refreshCustomSelect);
+}
+
+function openCustomSelect(select) {
+    initializeCustomSelects();
+    closeCustomSelect();
+    customSelectState.activeSelect = select;
+    const wrapper = select.closest('.custom-select');
+    wrapper?.classList.add('open');
+    wrapper?.querySelector('.custom-select-button')?.setAttribute('aria-expanded', 'true');
+    renderCustomSelectPopover(select);
+}
+
+function renderCustomSelectPopover(select) {
+    const popover = customSelectState.popover;
+    const button = select.closest('.custom-select')?.querySelector('.custom-select-button');
+    if (!popover || !button) return;
+    popover.innerHTML = '';
+    popover.classList.remove('hidden');
+
+    const options = Array.from(select.options);
+    const optionsWrap = document.createElement('div');
+    optionsWrap.className = 'custom-select-options';
+
+    let search = null;
+    if (options.length > 12) {
+        const searchWrap = document.createElement('div');
+        searchWrap.className = 'custom-select-search-wrap';
+        search = document.createElement('input');
+        search.type = 'search';
+        search.className = 'custom-select-search';
+        search.placeholder = 'Filter options…';
+        search.setAttribute('aria-label', 'Filter dropdown options');
+        searchWrap.appendChild(search);
+        popover.appendChild(searchWrap);
+    }
+    popover.appendChild(optionsWrap);
+
+    const paint = (query = '') => {
+        const needle = query.trim().toLowerCase();
+        optionsWrap.innerHTML = '';
+        const shown = options.filter(option => !needle || option.textContent.toLowerCase().includes(needle));
+        if (!shown.length) {
+            const empty = document.createElement('div');
+            empty.className = 'custom-select-empty';
+            empty.textContent = 'No matching options';
+            optionsWrap.appendChild(empty);
+            return;
+        }
+        shown.forEach(option => {
+            const item = document.createElement('button');
+            item.type = 'button';
+            item.className = `custom-select-option${option.value === select.value ? ' selected' : ''}`;
+            item.textContent = option.textContent;
+            item.disabled = option.disabled;
+            item.setAttribute('role', 'option');
+            item.setAttribute('aria-selected', String(option.value === select.value));
+            item.addEventListener('click', () => {
+                select.value = option.value;
+                select.dispatchEvent(new Event('input', { bubbles: true }));
+                select.dispatchEvent(new Event('change', { bubbles: true }));
+                refreshCustomSelect(select);
+                closeCustomSelect();
+                button.focus();
+            });
+            optionsWrap.appendChild(item);
+        });
+    };
+    paint();
+    if (search) {
+        search.addEventListener('input', () => paint(search.value));
+        requestAnimationFrame(() => search.focus());
+    }
+
+    positionCustomSelectPopover(select);
+}
+
+function positionCustomSelectPopover(select) {
+    const popover = customSelectState.popover;
+    const button = select?.closest('.custom-select')?.querySelector('.custom-select-button');
+    if (!popover || !button || popover.classList.contains('hidden')) return;
+    const options = Array.from(select.options);
+    const rect = button.getBoundingClientRect();
+    const desiredWidth = Math.max(rect.width, options.length > 12 ? 260 : 180);
+    popover.style.width = `${Math.min(desiredWidth, window.innerWidth - 20)}px`;
+    popover.style.left = `${Math.max(10, Math.min(rect.left, window.innerWidth - popover.offsetWidth - 10))}px`;
+    const below = window.innerHeight - rect.bottom;
+    const placeAbove = below < 220 && rect.top > below;
+    if (placeAbove) {
+        popover.style.top = 'auto';
+        popover.style.bottom = `${Math.max(10, window.innerHeight - rect.top + 5)}px`;
+    } else {
+        popover.style.bottom = 'auto';
+        popover.style.top = `${Math.max(10, Math.min(window.innerHeight - popover.offsetHeight - 10, rect.bottom + 5))}px`;
+    }
+}
+
+function closeCustomSelect() {
+    const select = customSelectState.activeSelect;
+    if (select) {
+        const wrapper = select.closest('.custom-select');
+        wrapper?.classList.remove('open');
+        wrapper?.querySelector('.custom-select-button')?.setAttribute('aria-expanded', 'false');
+    }
+    customSelectState.activeSelect = null;
+    if (customSelectState.popover) {
+        customSelectState.popover.classList.add('hidden');
+        customSelectState.popover.innerHTML = '';
+    }
+}
+
+
+function applyStoredFontSize() {
+    let size = 'medium';
+    try { size = localStorage.getItem('mapManagerFontSize') || 'medium'; } catch (_) { /* local preference only */ }
+    if (!['small', 'medium', 'large'].includes(size)) size = 'medium';
+    document.documentElement.dataset.fontSize = size;
+    requestAnimationFrame(() => updateFontSizeButtons(size));
+}
+
+function setFontSize(size) {
+    if (!['small', 'medium', 'large'].includes(size)) return;
+    document.documentElement.dataset.fontSize = size;
+    try { localStorage.setItem('mapManagerFontSize', size); } catch (_) { /* local preference only */ }
+    updateFontSizeButtons(size);
+}
+
+function updateFontSizeButtons(size) {
+    document.querySelectorAll('[data-font-size]').forEach(button => {
+        button.setAttribute('aria-pressed', String(button.dataset.fontSize === size));
+    });
 }
 
 async function initializeRepository() {
@@ -171,6 +413,7 @@ async function initializeRepository() {
         normalizeCatalogRecords();
         state.activeSlug = null;
         state.activeHotspotIndex = null;
+        state.mapHotspotIndex = null;
         state.stagedWrites.clear();
         state.stagedDeletes.clear();
         state.tempStagedPaths.clear();
@@ -184,11 +427,11 @@ async function initializeRepository() {
         state.previewView = null;
         clearDirtyIndicator();
 
-        els.repoStatus.textContent = `Repository: ${state.repositoryName}`;
+        els.repoStatus.innerHTML = `<i class="repo-dot"></i><span>${escapeHtml(state.repositoryName)}</span>`;
         els.unsupported.classList.add('hidden');
         els.addCountry.disabled = false;
         els.validateAll.disabled = false;
-        els.saveAll.disabled = false;
+        els.saveAll.disabled = true;
         renderCountries();
         renderWorkspace();
         hydrateCountryMetadataInBackground();
@@ -196,7 +439,7 @@ async function initializeRepository() {
     } catch (error) {
         console.error(error);
         state.repositoryReady = false;
-        els.repoStatus.textContent = 'Repository not detected';
+        els.repoStatus.innerHTML = '<i class="repo-dot error"></i><span>Repository not detected</span>';
         els.unsupported.textContent = error.message || 'Could not detect the repository.';
         els.unsupported.classList.remove('hidden');
         els.countryList.innerHTML = '<div class="empty-state compact">Repository could not be loaded.</div>';
@@ -231,9 +474,40 @@ function normalizeCatalogRecords() {
             h.year = h.year ?? '';
             h.country = h.country || '';
             h.images = Array.isArray(h.images) ? h.images : (h.imageUrl ? [h.imageUrl] : []);
+            h.inactiveImages = Array.isArray(h.inactiveImages) ? h.inactiveImages : [];
+            // Avoid the same path being both public and intentionally inactive.
+            h.inactiveImages = h.inactiveImages.filter(path => !h.images.includes(path));
             delete h.imageUrl;
             h._assetFolder = inferAssetFolder(h, slug);
+            if (!h._baselinePosition) captureHotspotBaseline(h);
         });
+    });
+}
+
+
+function optionalFiniteNumber(value) {
+    // Number('') and Number(null) are both 0, which is dangerous for optional coordinates.
+    // Treat blank/nullish values as missing and only accept an explicitly numeric value.
+    if (value == null || (typeof value === 'string' && !value.trim())) return null;
+    const n = Number(value);
+    return Number.isFinite(n) ? n : null;
+}
+
+function captureHotspotBaseline(hotspot) {
+    if (!hotspot) return;
+    hotspot._baselinePosition = {
+        provinceId: hotspot.provinceId || '',
+        lat: optionalFiniteNumber(hotspot.lat),
+        lon: optionalFiniteNumber(hotspot.lon),
+        x: optionalFiniteNumber(hotspot.x),
+        y: optionalFiniteNumber(hotspot.y),
+        provinceOverride: Boolean(hotspot._provinceOverride),
+    };
+}
+
+function refreshAllHotspotBaselines() {
+    Object.values(state.catalog || {}).forEach(entry => {
+        (entry.hotspots || []).forEach(captureHotspotBaseline);
     });
 }
 
@@ -265,14 +539,16 @@ function renderCountries() {
         const top = document.createElement('span');
         top.className = 'country-item-topline';
         const title = document.createElement('strong');
-        title.textContent = entry.title || slug;
+        title.textContent = entry.countryName || countryNameFromEntry(entry) || entry.title || slug;
         const health = document.createElement('i');
         health.className = `country-item-health ${stats.level}`;
         health.title = stats.level === 'error' ? 'Has blocking errors' : stats.level === 'warning' ? 'Needs review' : 'Ready';
         top.append(title, health);
         const meta = document.createElement('span');
         meta.className = 'country-item-statline';
-        meta.innerHTML = `<em>${stats.total} hotspots</em><em>${stats.images} images</em><em>${stats.level === 'error' ? stats.errors + ' errors' : stats.level === 'warning' ? stats.warnings + ' review' : 'ready'}</em>`;
+        const locationLabel = `${stats.total} hotspot${stats.total === 1 ? '' : 's'}`;
+        const imageLabel = `${stats.images} photo${stats.images === 1 ? '' : 's'}`;
+        meta.textContent = `${locationLabel} · ${imageLabel}`;
         button.append(top, meta);
         button.addEventListener('click', () => selectCountry(slug));
         els.countryList.appendChild(button);
@@ -294,6 +570,7 @@ async function performCountrySelection(slug) {
     hideHotspotHoverCard();
     state.activeSlug = slug;
     state.activeHotspotIndex = null;
+    state.mapHotspotIndex = null;
     state.selectedHotspots.clear();
     state.previewBaseView = null;
     state.previewView = null;
@@ -326,13 +603,64 @@ function renderWorkspace() {
     els.workspace.classList.remove('empty-workspace');
     els.workspaceEmpty.classList.add('hidden');
     els.countryWorkspace.classList.remove('hidden');
-    els.countrySlug.textContent = state.activeSlug;
+    renderCountryShareRoute(entry);
     els.countryTitle.textContent = entry.title || state.activeSlug;
     els.countryDescription.textContent = entry.description || '';
     renderHotspotList();
     renderEditor();
     renderCountryHealth();
     renderImportHistory();
+}
+
+
+function publicRouteForSlug(slug) {
+    const repo = String(state.repositoryName || '').trim().replace(/^\/+|\/+$/g, '');
+    return `${repo ? repo + '/' : ''}#${slug}`;
+}
+
+async function copyTextToClipboard(text) {
+    if (navigator.clipboard?.writeText) {
+        await navigator.clipboard.writeText(text);
+        return;
+    }
+    const input = document.createElement('textarea');
+    input.value = text;
+    input.setAttribute('readonly', '');
+    input.style.position = 'fixed';
+    input.style.opacity = '0';
+    document.body.appendChild(input);
+    input.select();
+    const ok = document.execCommand('copy');
+    input.remove();
+    if (!ok) throw new Error('Copy is not available in this browser.');
+}
+
+function renderCountryShareRoute(entry) {
+    const countryName = entry.countryName || countryNameFromEntry(entry) || state.activeSlug;
+    const route = publicRouteForSlug(state.activeSlug);
+    els.countrySlug.replaceChildren();
+
+    const name = document.createElement('span');
+    name.textContent = countryName;
+    const separator = document.createElement('span');
+    separator.className = 'country-route-separator';
+    separator.textContent = '·';
+    const routeButton = document.createElement('button');
+    routeButton.type = 'button';
+    routeButton.className = 'country-route-copy';
+    routeButton.textContent = route;
+    routeButton.title = 'Copy country URL';
+    routeButton.setAttribute('aria-label', `Copy country URL: ${route}`);
+    routeButton.addEventListener('click', async () => {
+        try {
+            await copyTextToClipboard(route);
+            toast(`Copied ${route}`);
+        } catch (error) {
+            toast(error.message || 'Could not copy the country URL.', true);
+        }
+    });
+
+    els.countrySlug.append(name, separator, routeButton);
 }
 
 function activeEntry() {
@@ -345,17 +673,32 @@ function activeHotspot() {
     return entry.hotspots[state.activeHotspotIndex] || null;
 }
 
+
+function allManagedImages(h) {
+    if (!h) return [];
+    return [...new Set([...(h.images || []), ...(h.inactiveImages || [])])];
+}
+
+function setImageUse(h, path, useOnMap) {
+    if (!h) return;
+    h.images = Array.isArray(h.images) ? h.images : [];
+    h.inactiveImages = Array.isArray(h.inactiveImages) ? h.inactiveImages : [];
+    h.images = h.images.filter(item => item !== path);
+    h.inactiveImages = h.inactiveImages.filter(item => item !== path);
+    (useOnMap ? h.images : h.inactiveImages).push(path);
+}
+
 function renderHotspotList() {
     const entry = activeEntry();
     if (!entry) return;
     const query = (els.hotspotSearch.value || '').trim().toLowerCase();
     const filter = els.hotspotFilter?.value || 'all';
-    els.hotspotCount.textContent = `${entry.hotspots.length} total`;
+    els.hotspotCount.textContent = `${entry.hotspots.length} hotspot${entry.hotspots.length === 1 ? '' : 's'}`;
     els.hotspotList.innerHTML = '';
 
     const filtered = getFilteredHotspots(entry, query, filter);
     if (!filtered.length) {
-        els.hotspotList.innerHTML = '<div class="empty-state large">No matching hotspots.</div>';
+        els.hotspotList.innerHTML = '<div class="empty-state large">No hotspots match this search.</div>';
         renderBulkToolbar(filtered);
         return;
     }
@@ -381,7 +724,12 @@ function renderHotspotList() {
         });
         row.querySelector('strong').textContent = hotspot.title || '(Unnamed hotspot)';
         row.querySelector('small').textContent = [hotspot.city, hotspot.provinceId].filter(Boolean).join(' · ') || 'No location';
-        row.querySelector('.image-count').textContent = `${hotspot.images?.length || 0} img`;
+        const imageCount = hotspot.images?.length || 0;
+        const inactiveCount = hotspot.inactiveImages?.length || 0;
+        const totalImages = imageCount + inactiveCount;
+        row.querySelector('.image-count').textContent = inactiveCount
+            ? `${imageCount} used · ${totalImages} photo${totalImages === 1 ? '' : 's'}`
+            : `${imageCount} photo${imageCount === 1 ? '' : 's'}`;
         const activate = () => selectHotspot(index);
         row.addEventListener('click', activate);
         row.addEventListener('keydown', event => { if (event.key === 'Enter' || event.key === ' ') { event.preventDefault(); activate(); } });
@@ -415,7 +763,7 @@ function getCountryStats(slug) {
         else valid++;
     });
     if (!String(entry.countryName || '').trim() || !entry.svgUrl) errors++;
-    const images = entry.hotspots.reduce((sum, h) => sum + (h.images?.length || 0), 0);
+    const images = entry.hotspots.reduce((sum, h) => sum + allManagedImages(h).length, 0);
     return {
         total: entry.hotspots.length,
         images,
@@ -445,8 +793,8 @@ function getFilteredHotspots(entry = activeEntry(), query = (els.hotspotSearch?.
 function renderBulkToolbar(filtered = getFilteredHotspots()) {
     const entry = activeEntry();
     if (!entry) return;
-    els.bulkToolbar.classList.remove('hidden');
     const selected = [...state.selectedHotspots].filter(index => index >= 0 && index < entry.hotspots.length);
+    els.bulkToolbar.classList.toggle('hidden', selected.length === 0);
     state.selectedHotspots = new Set(selected);
     els.bulkSelectedCount.textContent = `${selected.length} selected`;
     const visibleIndexes = filtered.map(item => item.index);
@@ -468,6 +816,7 @@ function renderBulkProvinceOptions() {
         els.bulkProvince.appendChild(option);
     });
     if (regions.some(region => region.id === current)) els.bulkProvince.value = current;
+    refreshCustomSelect(els.bulkProvince);
 }
 
 function toggleSelectAllVisible() {
@@ -518,8 +867,9 @@ function removeImagesFromBulkSelection() {
     let removed = 0;
     state.selectedHotspots.forEach(index => {
         const h = entry.hotspots[index];
-        if (!h?.images?.length) return;
-        h.images.forEach(path => {
+        const managed = allManagedImages(h);
+        if (!managed.length) return;
+        managed.forEach(path => {
             if (state.tempStagedPaths.has(path)) { void deleteTempPath(path); state.tempStagedPaths.delete(path); }
             if (state.stagedWrites.has(path)) state.stagedWrites.delete(path);
             else state.stagedDeletes.add(path);
@@ -529,6 +879,7 @@ function removeImagesFromBulkSelection() {
             removed++;
         });
         h.images = [];
+        h.inactiveImages = [];
     });
     if (!removed) return toast('Selected hotspots have no images.');
     markDirty();
@@ -548,6 +899,7 @@ function deleteBulkSelection() {
     indexes.forEach(index => entry.hotspots.splice(index, 1));
     state.selectedHotspots.clear();
     state.activeHotspotIndex = null;
+    state.mapHotspotIndex = null;
     markDirty();
     renderHotspotList();
     renderEditor();
@@ -562,7 +914,7 @@ async function cleanupUnusedImages() {
     if (!entry) return;
     try {
         const files = await listPath(`images/${state.activeSlug}`);
-        const referenced = new Set(entry.hotspots.flatMap(h => h.images || []));
+        const referenced = new Set(entry.hotspots.flatMap(h => allManagedImages(h)));
         [entry.logoUrl, entry.thumbnail, entry.svgUrl].filter(Boolean).forEach(path => referenced.add(path));
         const imageExt = /\.(?:jpe?g|png|webp|gif|avif|bmp)$/i;
         const unused = files.filter(file => imageExt.test(file.path) && !referenced.has(file.path) && !state.stagedDeletes.has(file.path));
@@ -584,9 +936,19 @@ async function cleanupUnusedImages() {
 
 function selectHotspot(index, { updatePreview = true } = {}) {
     state.activeHotspotIndex = index;
+    // Selecting from the list/editor intentionally syncs the map highlight.
+    state.mapHotspotIndex = index;
     renderHotspotList();
     renderEditor();
     if (updatePreview) updatePreviewMarkers();
+}
+
+function selectMapHotspot(index) {
+    // Map focus is deliberately independent from the editor/list selection. This prevents
+    // switching the editor above (and changing its image-driven height) just because a marker
+    // was clicked or dragged in the map.
+    state.mapHotspotIndex = index;
+    updatePreviewMarkers();
 }
 
 function renderEditor() {
@@ -609,7 +971,7 @@ function renderEditor() {
     els.fieldLat.value = formatNumber(h.lat, 6);
     els.fieldLon.value = formatNumber(h.lon, 6);
     els.fieldXy.textContent = Number.isFinite(Number(h.x)) && Number.isFinite(Number(h.y))
-        ? `x ${formatNumber(h.x, 3)} · y ${formatNumber(h.y, 3)}` : '—';
+        ? `x ${formatNumber(h.x, 3)} · y ${formatNumber(h.y, 3)}` : '-';
 
     renderProvinceOptions(h.provinceId || '');
     const status = hotspotValidationStatus(state.activeSlug, h, state.activeHotspotIndex);
@@ -640,6 +1002,7 @@ function renderProvinceOptions(selectedId) {
         els.fieldProvince.appendChild(legacy);
     }
     els.fieldProvince.value = selectedId || '';
+    refreshCustomSelect(els.fieldProvince);
 }
 
 function renderCoordinateMessage(h) {
@@ -658,7 +1021,7 @@ function syncEditorTextFields() {
     h.address = els.fieldAddress.value;
     h.description = els.fieldDescription.value;
     if (!h.country) h.country = countryNameFromEntry(activeEntry());
-    if (!h._assetFolder || !h.images?.length) h._assetFolder = generatedFacilityFolder(h);
+    if (!h._assetFolder || !allManagedImages(h).length) h._assetFolder = generatedFacilityFolder(h);
     markDirty();
     renderHotspotList();
     renderCountryHealth();
@@ -744,11 +1107,14 @@ function addHotspot() {
         x: xy.x,
         y: xy.y,
         images: [],
+        inactiveImages: [],
         _assetFolder: 'new_hotspot',
         _positionSource: 'manual-new',
     };
+    captureHotspotBaseline(hotspot);
     entry.hotspots.push(hotspot);
     state.activeHotspotIndex = entry.hotspots.length - 1;
+    state.mapHotspotIndex = state.activeHotspotIndex;
     markDirty();
     renderHotspotList();
     renderEditor();
@@ -829,6 +1195,14 @@ function backfillGeographicCoordinates(slug) {
             h.lat = ll.lat;
             h.lon = ll.lon;
             h._backfilledLatLon = true;
+
+            // Legacy catalog entries may have had their reset baseline captured before
+            // geographic coordinates existed. Complete that baseline as soon as the
+            // coordinates are derived so Reset selected can never blank lat/lon.
+            if (h._baselinePosition) {
+                if (optionalFiniteNumber(h._baselinePosition.lat) == null) h._baselinePosition.lat = ll.lat;
+                if (optionalFiniteNumber(h._baselinePosition.lon) == null) h._baselinePosition.lon = ll.lon;
+            }
         }
         h._assetFolder = h._assetFolder || inferAssetFolder(h, slug);
     });
@@ -886,8 +1260,29 @@ function renderMapPreview() {
     svg.removeAttribute('width');
     svg.removeAttribute('height');
     svg.setAttribute('preserveAspectRatio', 'xMidYMid meet');
+    applyPreviewMapColors(svg, activeEntry());
     initializeMapNavigation(svg);
     updatePreviewMarkers();
+}
+
+function applyPreviewMapColors(svg, entry) {
+    if (!svg || !entry) return;
+    const config = entry.colorConfig || {};
+    const baseHue = Number(config.baseHue ?? 175);
+    const satNumber = clamp(parseFloat(String(config.sat ?? '50').replace('%', '')) || 50, 0, 100);
+    const minLight = clamp(Number(config.minLight ?? 75), 0, 100);
+    const maxLight = clamp(Number(config.maxLight ?? 85), 0, 100);
+    const shapes = Array.from(svg.querySelectorAll('path[id], polygon[id], polyline[id], rect[id], circle[id], ellipse[id]'))
+        .filter(el => el.id && el.id !== 'hotspots-layer' && el.id !== 'manager-hotspot-layer');
+    shapes.forEach((el, index) => {
+        const t = shapes.length > 1 ? index / (shapes.length - 1) : 0.5;
+        const jitter = ((index * 37) % 9) - 4;
+        const light = maxLight - t * (maxLight - minLight);
+        el.setAttribute('fill', `hsl(${baseHue + jitter}, ${satNumber}%, ${light}%)`);
+        el.setAttribute('stroke', 'rgba(255,255,255,.92)');
+        el.setAttribute('stroke-width', '0.6');
+        el.setAttribute('vector-effect', 'non-scaling-stroke');
+    });
 }
 
 function previewSvg() {
@@ -945,12 +1340,9 @@ function clampPreviewView(view) {
 
 function initializeMapNavigation(svg) {
     svg.classList.add('manager-map-svg');
-    svg.addEventListener('wheel', event => {
-        event.preventDefault();
-        const anchor = clientToSvg(svg, event.clientX, event.clientY);
-        zoomPreview(event.deltaY < 0 ? 0.82 : 1.22, anchor);
-    }, { passive: false });
 
+    // Mouse-wheel zoom is intentionally disabled. The wheel should keep its normal browser
+    // behaviour (page scrolling); zooming the editor is available only through the + / − buttons.
     svg.addEventListener('pointerdown', event => {
         if (event.button !== 0 && event.pointerType === 'mouse') return;
         if (event.target.closest?.('#manager-hotspot-layer')) return;
@@ -1005,7 +1397,7 @@ function updatePreviewMarkers() {
         const group = document.createElementNS('http://www.w3.org/2000/svg', 'g');
         group.dataset.index = String(index);
 
-        const selected = index === state.activeHotspotIndex;
+        const selected = index === state.mapHotspotIndex;
         const circle = document.createElementNS('http://www.w3.org/2000/svg', 'circle');
         circle.setAttribute('cx', h.x);
         circle.setAttribute('cy', h.y);
@@ -1023,8 +1415,14 @@ function updatePreviewMarkers() {
         hit.addEventListener('pointermove', event => positionHotspotHoverCard(event));
         hit.addEventListener('pointerleave', hideHotspotHoverCard);
         hit.addEventListener('click', event => {
+            if (hit.dataset.suppressClick === '1') {
+                delete hit.dataset.suppressClick;
+                event.preventDefault();
+                event.stopPropagation();
+                return;
+            }
             event.stopPropagation();
-            selectHotspot(index);
+            selectMapHotspot(index);
         });
 
         group.append(circle, hit);
@@ -1036,8 +1434,8 @@ function showHotspotHoverCard(event, hotspot) {
     if (!hotspot || !els.hotspotHoverCard) return;
     const name = hotspot.title || 'Unnamed facility';
     const city = (hotspot.city || '').trim();
-    const lat = Number.isFinite(Number(hotspot.lat)) ? formatNumber(hotspot.lat, 6) : '—';
-    const lon = Number.isFinite(Number(hotspot.lon)) ? formatNumber(hotspot.lon, 6) : '—';
+    const lat = Number.isFinite(Number(hotspot.lat)) ? formatNumber(hotspot.lat, 6) : '-';
+    const lon = Number.isFinite(Number(hotspot.lon)) ? formatNumber(hotspot.lon, 6) : '-';
     els.hotspotHoverCard.innerHTML = '';
     const strong = document.createElement('strong');
     strong.textContent = name;
@@ -1076,69 +1474,143 @@ function hideHotspotHoverCard() {
     els.hotspotHoverCard.classList.add('hidden');
 }
 
+let markerDragScrollLock = null;
+
+function lockPageScrollForMarkerDrag(pointerId) {
+    if (markerDragScrollLock || !els.workspace) return null;
+    const workspace = els.workspace;
+    const lock = {
+        scrollTop: workspace.scrollTop,
+        scrollLeft: workspace.scrollLeft,
+        shield: null,
+        scrollHandler: null,
+    };
+
+    document.documentElement.classList.add('manager-marker-dragging');
+    workspace.classList.add('map-drag-lock');
+
+    // The application now uses the workspace as its scroll container instead of the document.
+    // During a marker drag we freeze that one container. This avoids Chromium's native edge
+    // autoscroll without changing body positioning, so sticky/header/sidebar UI never disappears.
+    lock.scrollHandler = () => {
+        if (!markerDragScrollLock) return;
+        if (workspace.scrollTop !== lock.scrollTop) workspace.scrollTop = lock.scrollTop;
+        if (workspace.scrollLeft !== lock.scrollLeft) workspace.scrollLeft = lock.scrollLeft;
+    };
+    workspace.addEventListener('scroll', lock.scrollHandler, { passive: true });
+
+    const shield = document.createElement('div');
+    shield.className = 'marker-drag-shield';
+    shield.setAttribute('aria-hidden', 'true');
+    document.body.appendChild(shield);
+    lock.shield = shield;
+    markerDragScrollLock = lock;
+
+    // Pointer capture is intentionally moved to a fixed overlay. The overlay does not move with
+    // the SVG marker and prevents the browser from treating the drag as selection/dragging page
+    // content when the physical pointer approaches the viewport edge.
+    try { shield.setPointerCapture(pointerId); } catch (_) { }
+    return lock;
+}
+
+function unlockPageScrollForMarkerDrag() {
+    const lock = markerDragScrollLock;
+    if (!lock) return;
+    markerDragScrollLock = null;
+    const workspace = els.workspace;
+    if (workspace && lock.scrollHandler) workspace.removeEventListener('scroll', lock.scrollHandler);
+    if (workspace) {
+        workspace.classList.remove('map-drag-lock');
+        workspace.scrollTop = lock.scrollTop;
+        workspace.scrollLeft = lock.scrollLeft;
+    }
+    lock.shield?.remove();
+    document.documentElement.classList.remove('manager-marker-dragging');
+}
+
 function beginMarkerDrag(event) {
+    if (event.button !== 0 && event.pointerType === 'mouse') return;
     event.preventDefault();
     event.stopPropagation();
     hideHotspotHoverCard();
     const hit = event.currentTarget;
     const index = Number(hit.dataset.index);
     const svg = previewSvg();
-    if (!svg || !Number.isInteger(index)) return;
+    const entry = activeEntry();
+    const meta = state.svgMeta.get(state.activeSlug);
+    if (!svg || !entry || !meta || !Number.isInteger(index) || !entry.hotspots[index]) return;
 
-    // Do not rebuild the preview here: rebuilding removes the pointer target and was the
-    // reason dragging failed in the first version. Update the side panels only.
-    selectHotspot(index, { updatePreview: false });
+    state.mapHotspotIndex = index;
+    const h = entry.hotspots[index];
     const group = hit.parentElement;
     const marker = group?.querySelector('.manager-hotspot-marker');
     if (!marker) return;
+
+    svg.querySelectorAll('.manager-hotspot-marker.selected').forEach(node => node.classList.remove('selected'));
     marker.classList.add('selected');
     hit.classList.add('dragging');
-    hit.setPointerCapture(event.pointerId);
+    const dragLock = lockPageScrollForMarkerDrag(event.pointerId);
+    const eventTarget = dragLock?.shield || hit;
+    if (eventTarget === hit) {
+        try { hit.setPointerCapture(event.pointerId); } catch (_) { }
+    }
+
+    let moved = false;
+    let finalX = Number(h.x);
+    let finalY = Number(h.y);
 
     const move = moveEvent => {
         moveEvent.preventDefault();
         moveEvent.stopPropagation();
         const point = clientToSvg(svg, moveEvent.clientX, moveEvent.clientY);
         if (!point) return;
-        marker.setAttribute('cx', point.x);
-        marker.setAttribute('cy', point.y);
-        hit.setAttribute('cx', point.x);
-        hit.setAttribute('cy', point.y);
-        const h = activeHotspot();
-        const meta = state.svgMeta.get(state.activeSlug);
-        if (!h || !meta) return;
-        h.x = round(point.x, 4);
-        h.y = round(point.y, 4);
-        const ll = xyToLatLon(h.x, h.y, meta.bounds, meta.viewBox);
-        h.lat = ll.lat;
-        h.lon = ll.lon;
-        h.provinceId = detectProvinceAtXY(h.x, h.y) || '';
-        h._positionSource = 'manual-drag';
-        h._provinceOverride = false;
-        h._provinceMismatch = '';
-        markDirty();
-        els.fieldLat.value = formatNumber(h.lat, 6);
-        els.fieldLon.value = formatNumber(h.lon, 6);
-        els.fieldXy.textContent = `x ${formatNumber(h.x, 3)} · y ${formatNumber(h.y, 3)}`;
-        renderCoordinateMessage(h);
-        renderProvinceOptions(h.provinceId || '');
+        const x = clamp(point.x, meta.viewBox.x, meta.viewBox.x + meta.viewBox.width);
+        const y = clamp(point.y, meta.viewBox.y, meta.viewBox.y + meta.viewBox.height);
+        finalX = round(x, 4);
+        finalY = round(y, 4);
+        moved = moved || Math.abs(finalX - Number(h.x)) > 0.0001 || Math.abs(finalY - Number(h.y)) > 0.0001;
+        marker.setAttribute('cx', finalX);
+        marker.setAttribute('cy', finalY);
+        hit.setAttribute('cx', finalX);
+        hit.setAttribute('cy', finalY);
     };
 
-    const up = () => {
+    const finish = upEvent => {
+        upEvent?.preventDefault?.();
+        upEvent?.stopPropagation?.();
+        eventTarget.removeEventListener('pointermove', move);
+        eventTarget.removeEventListener('pointerup', finish);
+        eventTarget.removeEventListener('pointercancel', finish);
+        eventTarget.removeEventListener('lostpointercapture', finish);
         hit.classList.remove('dragging');
-        hit.removeEventListener('pointermove', move);
-        hit.removeEventListener('pointerup', up);
-        hit.removeEventListener('pointercancel', up);
-        renderHotspotList();
-        renderEditor();
+
+        if (moved) {
+            h.x = finalX;
+            h.y = finalY;
+            const ll = xyToLatLon(h.x, h.y, meta.bounds, meta.viewBox);
+            h.lat = ll.lat;
+            h.lon = ll.lon;
+            h.provinceId = detectProvinceAtXY(h.x, h.y) || '';
+            h._positionSource = 'manual-drag';
+            h._provinceOverride = false;
+            h._provinceMismatch = '';
+            hit.dataset.suppressClick = '1';
+        }
+
+        unlockPageScrollForMarkerDrag();
+        if (moved) markDirty();
+        // Never switch or rebuild the editor/list because a marker was moved on the map.
+        // If this same hotspot was already selected above, refresh only its editor fields once.
+        if (state.activeHotspotIndex === index) renderEditor();
         renderCountryHealth();
         renderCountries();
         updatePreviewMarkers();
     };
 
-    hit.addEventListener('pointermove', move);
-    hit.addEventListener('pointerup', up);
-    hit.addEventListener('pointercancel', up);
+    eventTarget.addEventListener('pointermove', move, { passive: false });
+    eventTarget.addEventListener('pointerup', finish, { passive: false });
+    eventTarget.addEventListener('pointercancel', finish, { passive: false });
+    eventTarget.addEventListener('lostpointercapture', finish, { passive: false });
 }
 
 function clientToSvg(svg, clientX, clientY) {
@@ -1178,20 +1650,71 @@ function detectProvinceAtXY(x, y) {
     return '';
 }
 
-function recalculateSelectedHotspot() {
+function resolveHotspotBaseline(hotspot) {
+    if (!hotspot?._baselinePosition) return null;
+    const baseline = hotspot._baselinePosition;
+    const meta = state.svgMeta.get(state.activeSlug);
+
+    let lat = optionalFiniteNumber(baseline.lat);
+    let lon = optionalFiniteNumber(baseline.lon);
+    let x = optionalFiniteNumber(baseline.x);
+    let y = optionalFiniteNumber(baseline.y);
+
+    // x/y is the actual map position that Reset is restoring, so when it exists it is
+    // authoritative. Always derive lat/lon from that saved map position. This also repairs
+    // baselines produced by older builds where blank/null lat/lon could accidentally become 0.
+    if (x != null && y != null && meta) {
+        const ll = xyToLatLon(x, y, meta.bounds, meta.viewBox);
+        lat = ll.lat;
+        lon = ll.lon;
+    } else if (lat != null && lon != null && meta) {
+        const xy = latLonToXY(lat, lon, meta.bounds, meta.viewBox);
+        x = xy.x;
+        y = xy.y;
+    }
+
+    if ([lat, lon, x, y].some(value => value == null || !Number.isFinite(value))) return null;
+
+    // Heal the stored baseline so subsequent resets do not need reconstruction.
+    baseline.lat = lat;
+    baseline.lon = lon;
+    baseline.x = x;
+    baseline.y = y;
+
+    return {
+        lat, lon, x, y,
+        provinceId: baseline.provinceId || '',
+        provinceOverride: Boolean(baseline.provinceOverride),
+    };
+}
+
+function resetSelectedHotspot() {
     const h = activeHotspot();
     if (!h) return;
-    syncHotspotFromCoordinates(h, { redetectProvince: true });
-    h._positionSource = 'coordinates';
-    h._provinceOverride = false;
+    const baseline = resolveHotspotBaseline(h);
+    if (!baseline) {
+        toast('This hotspot has no complete position to reset to.', true);
+        return;
+    }
+
+    h.lat = baseline.lat;
+    h.lon = baseline.lon;
+    h.x = baseline.x;
+    h.y = baseline.y;
+    h.provinceId = baseline.provinceId || detectProvinceAtXY(baseline.x, baseline.y) || '';
+    h._provinceOverride = Boolean(baseline.provinceOverride);
     h._provinceMismatch = '';
+    h._positionSource = 'reset';
+
     markDirty();
     renderEditor();
     renderHotspotList();
     renderCountryHealth();
     renderCountries();
     updatePreviewMarkers();
+    toast('Selected hotspot position reset.');
 }
+
 
 async function handleSvgReplacement(event) {
     const file = event.target.files?.[0];
@@ -1235,7 +1758,7 @@ function openCountryDialog(mode) {
     els.countryForm.reset();
     els.countryFormMessage.classList.add('hidden');
     if (mode === 'add') {
-        els.countryDialogTitle.textContent = 'Add Country';
+        els.countryDialogTitle.textContent = 'Add country';
         els.slugFieldWrap.classList.remove('hidden');
         els.newSvgWrap.classList.remove('hidden');
         els.mapSlug.required = true;
@@ -1253,7 +1776,7 @@ function openCountryDialog(mode) {
     } else {
         const entry = activeEntry();
         if (!entry) return;
-        els.countryDialogTitle.textContent = 'Map Settings';
+        els.countryDialogTitle.textContent = 'Map settings';
         els.slugFieldWrap.classList.add('hidden');
         els.newSvgWrap.classList.add('hidden');
         els.mapSlug.required = false;
@@ -1316,6 +1839,7 @@ async function createCountryFromDialog() {
     state.stagedWrites.set(svgPath, file);
     state.activeSlug = slug;
     state.activeHotspotIndex = null;
+    state.mapHotspotIndex = null;
     markDirty();
     renderCountries();
     renderWorkspace();
@@ -1337,6 +1861,7 @@ function updateCountryFromDialog() {
     markDirty();
     renderCountries();
     renderWorkspace();
+    renderMapPreview();
 }
 
 function readColorConfigFromDialog() {
@@ -1344,8 +1869,10 @@ function readColorConfigFromDialog() {
     const minRaw = Number(els.mapMinLight.value);
     const maxRaw = Number(els.mapMaxLight.value);
     const hue = Number.isFinite(hueRaw) ? Math.max(0, Math.min(360, hueRaw)) : 175;
-    const minLight = Number.isFinite(minRaw) ? Math.max(0, Math.min(100, minRaw)) : 75;
-    const maxLight = Number.isFinite(maxRaw) ? Math.max(0, Math.min(100, maxRaw)) : 85;
+    const minCandidate = Number.isFinite(minRaw) ? Math.max(0, Math.min(100, minRaw)) : 75;
+    const maxCandidate = Number.isFinite(maxRaw) ? Math.max(0, Math.min(100, maxRaw)) : 85;
+    const minLight = Math.min(minCandidate, maxCandidate);
+    const maxLight = Math.max(minCandidate, maxCandidate);
     return {
         baseHue: hue,
         sat: `${readSaturationNumber()}%`,
@@ -1430,12 +1957,8 @@ async function handleExcelSelected(event) {
     event.target.value = '';
     if (!file || !state.activeSlug) return;
     try {
-        if (typeof XLSX === 'undefined') throw new Error('Excel parser did not load. Check your internet connection and reload the manager.');
-        const buffer = await file.arrayBuffer();
-        const workbook = XLSX.read(buffer, { type: 'array', cellDates: false });
-        const sheetName = workbook.SheetNames[0];
-        if (!sheetName) throw new Error('Excel file has no worksheets.');
-        const rows = XLSX.utils.sheet_to_json(workbook.Sheets[sheetName], { header: 1, raw: false, defval: '' });
+        if (!/\.xlsx$/i.test(file.name)) throw new Error('Please use the provided .xlsx Excel template.');
+        const rows = await parseExcelFile(file);
         const parsed = parseExcelRows(rows);
         parsed.fileName = file.name;
         parsed.plan = buildImportPlan(parsed.rows, activeEntry()?.hotspots || []);
@@ -1446,6 +1969,22 @@ async function handleExcelSelected(event) {
         console.error(error);
         toast(error.message || 'Could not import Excel file.', true);
     }
+}
+
+async function parseExcelFile(file) {
+    const response = await fetch('/__manager__/excel/parse', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet', 'X-Manager-Token': state.apiToken },
+        body: file,
+    });
+    if (!response.ok) {
+        let message = 'Could not read the Excel workbook.';
+        try { message = (await response.json()).error || message; } catch (_) { /* ignore */ }
+        throw new Error(message);
+    }
+    const payload = await response.json();
+    if (!Array.isArray(payload.rows)) throw new Error('Excel parser returned an invalid worksheet.');
+    return payload.rows;
 }
 
 function parseExcelRows(rows) {
@@ -1491,6 +2030,7 @@ function parseExcelRows(rows) {
             lat: parseCoordinate(values['Latitude'], 'lat'),
             lon: parseCoordinate(values['Longitude'], 'lon'),
             images: [],
+            inactiveImages: [],
         };
         if (!record.title) warnings.push({ level: 'error', text: `Row ${rowIndex + 1}: Hospital Name is empty.` });
         const coordinate = validateCoordinates(state.activeSlug, record.lat, record.lon);
@@ -1538,7 +2078,7 @@ function renderImportDialog(parsed, fileName) {
             ul.className = 'import-change-list';
             item.changes.slice(0, 5).forEach(change => {
                 const li = document.createElement('li');
-                li.textContent = `${change.label}: ${change.before || '—'} → ${change.after || '—'}`;
+                li.textContent = `${change.label}: ${change.before || '-'} → ${change.after || '-'}`;
                 ul.appendChild(li);
             });
             if (item.changes.length > 5) {
@@ -1558,11 +2098,12 @@ function renderImportDialog(parsed, fileName) {
                 if (!h) return;
                 const option = document.createElement('option');
                 option.value = String(index);
-                option.textContent = `${h.title || 'Unnamed'}${h.city ? ` — ${h.city}` : ''}`;
+                option.textContent = `${h.title || 'Unnamed'}${h.city ? ` - ${h.city}` : ''}`;
                 select.appendChild(option);
             });
             select.addEventListener('change', updateImportConfirmState);
             row.appendChild(select);
+            initializeCustomSelects(row);
         } else {
             const action = document.createElement('small');
             action.className = 'muted';
@@ -1589,7 +2130,7 @@ async function confirmExcelImport() {
     const unresolved = [...els.importPlan.querySelectorAll('select[data-plan-index]')].filter(select => !select.value);
     if (unresolved.length) {
         toast(`Resolve ${unresolved.length} import conflict${unresolved.length === 1 ? '' : 's'} first.`, true);
-        unresolved[0].focus();
+        unresolved[0].closest('.custom-select')?.querySelector('.custom-select-button')?.focus();
         return;
     }
 
@@ -1625,6 +2166,7 @@ async function confirmExcelImport() {
                 x: NaN,
                 y: NaN,
                 images: [],
+                inactiveImages: [],
                 _assetFolder: generatedFacilityFolder(record),
             };
             entry.hotspots.push(hotspot);
@@ -1634,6 +2176,7 @@ async function confirmExcelImport() {
 
         const coordinate = validateCoordinates(state.activeSlug, hotspot.lat, hotspot.lon);
         if (coordinate.level !== 'error') syncHotspotFromCoordinates(hotspot, { redetectProvince: true });
+        if (!hotspot._baselinePosition) captureHotspotBaseline(hotspot);
         hotspot._importedFromExcel = true;
         hotspot._importedSession = true;
         hotspot._excelRow = record._excelRow;
@@ -1765,6 +2308,7 @@ function importedChanges(existing, record) {
 
 function applyImportedRecord(target, record) {
     const preservedImages = target.images || [];
+    const preservedInactiveImages = target.inactiveImages || [];
     const preservedFolder = target._assetFolder;
     const required = ['title', 'lat', 'lon'];
     required.forEach(key => { target[key] = record[key]; });
@@ -1772,6 +2316,7 @@ function applyImportedRecord(target, record) {
         if (String(record[key] ?? '').trim() !== '') target[key] = record[key];
     });
     target.images = preservedImages;
+    target.inactiveImages = preservedInactiveImages;
     target._assetFolder = preservedFolder || inferAssetFolder(target, state.activeSlug) || generatedFacilityFolder(target);
 }
 
@@ -1882,7 +2427,7 @@ function validateHotspot(slug, h, { index = null } = {}) {
     // Optional information is informational only; it must not turn the map marker yellow.
     if (!String(h.city || '').trim()) issues.push({ level: 'info', text: 'City/region is not provided (optional).' });
     if (!String(h.description || '').trim()) issues.push({ level: 'info', text: 'Case description is not provided (optional).' });
-    if (!h.images?.length) issues.push({ level: 'warning', text: 'No images have been added.' });
+    if (!h.images?.length) issues.push({ level: 'warning', text: h.inactiveImages?.length ? 'No images are currently enabled for the public map.' : 'No images have been added.' });
     if (h._importConflict) issues.push({ level: 'warning', text: 'This hotspot came from a manually resolved Excel match.' });
     if (h._provinceMismatch) issues.push({ level: 'warning', text: `Marker geometry suggests province/state ${h._provinceMismatch} instead of ${h.provinceId || 'none'}.` });
 
@@ -1937,7 +2482,7 @@ function validateCountry(slug) {
 async function hydrateImageStatsForCountry(slug) {
     const entry = state.catalog?.[slug];
     if (!entry) return;
-    const paths = [...new Set(entry.hotspots.flatMap(h => h.images || []))];
+    const paths = [...new Set(entry.hotspots.flatMap(h => allManagedImages(h)))];
     await Promise.all(paths.map(async path => {
         if (state.stagedWrites.has(path)) {
             const data = state.stagedWrites.get(path);
@@ -1973,16 +2518,17 @@ async function validateCountryDeep(slug) {
                 issues.push({ level: 'warning', text: `${h.title || `Hotspot ${index + 1}`}: coordinates fall inside ${detected}, but province/state is ${h.provinceId}.` });
             }
         }
-        for (const path of h.images || []) {
+        for (const path of allManagedImages(h)) {
+            const isInactive = (h.inactiveImages || []).includes(path);
             if (!referencedImages.has(path)) referencedImages.set(path, []);
-            referencedImages.get(path).push(h.title || `Hotspot ${index + 1}`);
+            referencedImages.get(path).push(`${h.title || `Hotspot ${index + 1}`}${isInactive ? ' (not used)' : ''}`);
             const stat = state.fileStats.get(path);
             if (state.stagedDeletes.has(path)) {
                 issues.push({ level: 'error', text: `${h.title || `Hotspot ${index + 1}`}: referenced image is staged for deletion: ${path}.` });
             } else if (stat && stat.exists === false && !state.stagedWrites.has(path)) {
                 issues.push({ level: 'error', text: `${h.title || `Hotspot ${index + 1}`}: referenced image is missing: ${path}.` });
             } else if (Number.isFinite(stat?.size) && stat.size > OVERSIZED_IMAGE_BYTES) {
-                issues.push({ level: 'warning', text: `${h.title || `Hotspot ${index + 1}`}: ${path.split('/').pop()} is ${formatBytes(stat.size)}, above the preferred 4 MB maximum.` });
+                issues.push({ level: isInactive ? 'info' : 'warning', text: `${h.title || `Hotspot ${index + 1}`}: ${path.split('/').pop()} is ${formatBytes(stat.size)}, above the preferred 4 MB maximum${isInactive ? ' (currently not used on the public map)' : ''}.` });
             }
         }
     });
@@ -2029,7 +2575,7 @@ async function validateCountryDeep(slug) {
         const unused = files.filter(file => imageExt.test(file.path) && !keep.has(file.path) && !state.stagedDeletes.has(file.path));
         if (unused.length) {
             const total = unused.reduce((sum, file) => sum + Number(file.size || 0), 0);
-            issues.push({ level: 'warning', text: `${unused.length} unused image file${unused.length === 1 ? '' : 's'} found (${formatBytes(total)}). Use “Clean Unused Images” to stage them for removal.` });
+            issues.push({ level: 'warning', text: `${unused.length} unused image file${unused.length === 1 ? '' : 's'} found (${formatBytes(total)}). Use “Find unused images” to review and stage them for removal.` });
         }
     } catch (error) {
         issues.push({ level: 'warning', text: `Could not scan country image folder: ${error.message}` });
@@ -2041,6 +2587,7 @@ async function validateEverything() {
     const all = [];
     const previousSlug = state.activeSlug;
     const previousIndex = state.activeHotspotIndex;
+    const previousMapIndex = state.mapHotspotIndex;
     const previousBase = state.previewBaseView ? { ...state.previewBaseView } : null;
     const previousView = state.previewView ? { ...state.previewView } : null;
 
@@ -2048,6 +2595,7 @@ async function validateEverything() {
         try {
             state.activeSlug = slug;
             state.activeHotspotIndex = null;
+            state.mapHotspotIndex = null;
             await ensureSvgLoaded(slug);
             backfillGeographicCoordinates(slug);
             renderMapPreview();
@@ -2062,6 +2610,7 @@ async function validateEverything() {
 
     state.activeSlug = previousSlug;
     state.activeHotspotIndex = previousIndex;
+    state.mapHotspotIndex = previousMapIndex;
     state.previewBaseView = previousBase;
     state.previewView = previousView;
     if (previousSlug && state.svgSources.has(previousSlug)) {
@@ -2095,7 +2644,7 @@ function renderValidationResults(issues) {
     const warnings = issues.filter(i => i.level === 'warning').length;
     const mapCount = Object.keys(state.catalog).length;
     const hotspotCount = Object.values(state.catalog).reduce((sum, entry) => sum + (entry.hotspots?.length || 0), 0);
-    const imageCount = Object.values(state.catalog).reduce((sum, entry) => sum + (entry.hotspots || []).reduce((n, h) => n + (h.images?.length || 0), 0), 0);
+    const imageCount = Object.values(state.catalog).reduce((sum, entry) => sum + (entry.hotspots || []).reduce((n, h) => n + allManagedImages(h).length, 0), 0);
     els.validationSummary.innerHTML = `
         <div class="health-strip">
             <span class="health-pill ${errors ? 'error' : 'ok'}">${errors} errors</span>
@@ -2122,13 +2671,23 @@ function renderCountryHealth() {
     const stats = getCountryStats(state.activeSlug);
     const imageCount = stats.images;
     const meta = state.svgMeta.get(state.activeSlug);
+    const overall = stats.errors ? 'error' : stats.warnings ? 'warning' : 'ok';
+    const overallLabel = stats.errors ? 'Action required' : stats.warnings ? 'Needs review' : 'Ready';
+    const overallDetail = stats.errors
+        ? `${stats.errors} blocking issue${stats.errors === 1 ? '' : 's'}`
+        : stats.warnings
+            ? `${stats.warnings} hotspot${stats.warnings === 1 ? '' : 's'} to review`
+            : 'No issues found';
     els.countryHealth.innerHTML = `
-        <span class="health-pill ${stats.errors ? 'error' : 'ok'}">${stats.errors ? `${stats.errors} invalid` : 'No blocking errors'}</span>
-        <span class="health-pill ${stats.warnings ? 'warning' : 'ok'}">${stats.warnings} need review</span>
-        <span class="health-pill ok">${stats.valid} valid</span>
-        <span class="health-pill ok">${entry.hotspots.length} hotspots</span>
-        <span class="health-pill ok">${imageCount} images</span>
-        <span class="health-pill ${meta?.regions?.length ? 'ok' : 'error'}">${meta?.regions?.length || 0} SVG regions</span>`;
+        <div class="overview-status ${overall}">
+            <i></i><div><strong>${overallLabel}</strong><span>${overallDetail}</span></div>
+        </div>
+        <div class="overview-metrics">
+            <div><strong>${entry.hotspots.length}</strong><span>Hotspots</span></div>
+            <div><strong>${imageCount}</strong><span>Photos</span></div>
+            <div><strong>${stats.valid}</strong><span>Valid</span></div>
+            <div><strong>${meta?.regions?.length || 0}</strong><span>Map regions</span></div>
+        </div>`;
 }
 
 function appendValidationItem(container, issue) {
@@ -2153,7 +2712,7 @@ async function addImagesToSelected(files) {
         let name = safeFileName(file.name) || `image-${Date.now()}`;
         let path = `${baseDir}/${name}`;
         let n = 2;
-        while (h.images.includes(path) || state.stagedWrites.has(path)) {
+        while (allManagedImages(h).includes(path) || state.stagedWrites.has(path)) {
             const dot = name.lastIndexOf('.');
             const base = dot > 0 ? name.slice(0, dot) : name;
             const ext = dot > 0 ? name.slice(dot) : '';
@@ -2287,7 +2846,7 @@ function uniqueOptimizedPath(oldPath, newName) {
     const dir = oldPath.includes('/') ? oldPath.slice(0, oldPath.lastIndexOf('/')) : '';
     let candidate = `${dir}/${newName}`;
     if (candidate === oldPath) return candidate;
-    const allRefs = new Set(Object.values(state.catalog || {}).flatMap(entry => (entry.hotspots || []).flatMap(h => h.images || [])));
+    const allRefs = new Set(Object.values(state.catalog || {}).flatMap(entry => (entry.hotspots || []).flatMap(h => allManagedImages(h))));
     let n = 2;
     const dot = newName.lastIndexOf('.');
     const base = dot > 0 ? newName.slice(0, dot) : newName;
@@ -2302,8 +2861,8 @@ function uniqueOptimizedPath(oldPath, newName) {
 function replaceImageReferenceEverywhere(oldPath, newPath) {
     Object.values(state.catalog || {}).forEach(entry => {
         (entry.hotspots || []).forEach(h => {
-            if (!h.images) return;
-            h.images = h.images.map(path => path === oldPath ? newPath : path);
+            h.images = (h.images || []).map(path => path === oldPath ? newPath : path);
+            h.inactiveImages = (h.inactiveImages || []).map(path => path === oldPath ? newPath : path);
         });
     });
 }
@@ -2390,68 +2949,23 @@ async function confirmImageReduction() {
     }
 }
 
-async function reduceOversizedImagesForCountry() {
-    const entry = activeEntry();
-    if (!entry) return;
-    const paths = [...new Set(entry.hotspots.flatMap(h => h.images || []))];
-    const oversized = [];
-    for (const path of paths) {
-        try {
-            const stat = await getFileStat(path);
-            if (stat?.exists && stat.size > PREFERRED_MAX_IMAGE_BYTES) oversized.push(path);
-        } catch (_) { /* validation will report inaccessible files */ }
-    }
-    if (!oversized.length) return toast('No referenced images are over the preferred 4 MB maximum.');
-    const ok = window.confirm(`Reduce ${oversized.length} image${oversized.length === 1 ? '' : 's'} over 4 MB?\n\nThis is a manual high-quality reduction. PNGs are first tried losslessly; if that does not reach 4 MB, high-quality WebP reduction is used. JPEG/WebP/AVIF use high-quality reduction. Originals are only replaced when the result is smaller.`);
-    if (!ok) return;
-
-    let changed = 0;
-    let before = 0;
-    let after = 0;
-    for (const path of oversized) {
-        try {
-            const source = await blobForImagePath(path);
-            const originalBytes = source.size;
-            let result = null;
-            let losslessResult = null;
-            if (imageMimeFromPath(path, source) === 'image/png') {
-                losslessResult = await applyImageReduction(path, 'lossless', { quiet: true });
-                if (losslessResult.changed && losslessResult.finalBytes <= PREFERRED_MAX_IMAGE_BYTES) {
-                    changed++; before += originalBytes; after += losslessResult.finalBytes; continue;
-                }
-                // If the lossless pass helped but is still large, the user-approved batch action may continue with high-quality reduction.
-                const currentPath = losslessResult.changed ? losslessResult.newPath : path;
-                result = await applyImageReduction(currentPath, 'high-quality', { quiet: true });
-            } else {
-                result = await applyImageReduction(path, 'high-quality', { quiet: true });
-            }
-            if (result?.changed) {
-                changed++; before += originalBytes; after += result.finalBytes;
-            } else if (losslessResult?.changed) {
-                changed++; before += originalBytes; after += losslessResult.finalBytes;
-            }
-        } catch (error) {
-            console.warn('Could not reduce', path, error);
-        }
-    }
-    await renderImagesList();
-    renderHotspotList();
-    renderCountryHealth();
-    renderCountries();
-    toast(changed ? `${changed} temporary reduced image${changed === 1 ? '' : 's'} staged: ${formatBytes(before)} → ${formatBytes(after)}. Repository is unchanged until Apply Changes.` : 'No images could be reduced safely.', !changed);
-}
-
-
 async function renderImagesList() {
     const h = activeHotspot();
     els.imageList.innerHTML = '';
-    if (!h || !h.images?.length) {
-        els.imageList.innerHTML = '<div class="empty-state compact">No images yet.</div>';
+    const managed = allManagedImages(h);
+    if (!h || !managed.length) {
+        els.imageList.innerHTML = '<div class="empty-state compact">No photos added yet.</div>';
         return;
     }
-    h.images.forEach((path, index) => {
+
+    const rows = [
+        ...(h.images || []).map((path, index) => ({ path, used: true, index })),
+        ...(h.inactiveImages || []).map(path => ({ path, used: false, index: -1 })),
+    ];
+
+    rows.forEach(({ path, used, index }) => {
         const row = document.createElement('div');
-        row.className = 'image-row';
+        row.className = `image-row${used ? '' : ' is-unused'}`;
         const img = document.createElement('img');
         img.className = 'image-thumb';
         img.alt = '';
@@ -2461,15 +2975,33 @@ async function renderImagesList() {
         const small = document.createElement('small');
         small.textContent = path;
         text.append(strong, small);
+
         const actions = document.createElement('div');
         actions.className = 'image-actions';
+
+        const useToggle = document.createElement('label');
+        useToggle.className = 'image-use-toggle';
+        useToggle.title = used ? 'This image is shown on the public map' : 'Keep the file, but do not show it on the public map';
+        const useInput = document.createElement('input');
+        useInput.type = 'checkbox';
+        useInput.checked = used;
+        useInput.setAttribute('aria-label', `Use ${path.split('/').pop()} on public map`);
+        const useSwitch = document.createElement('span');
+        useSwitch.className = 'image-use-switch';
+        const useLabel = document.createElement('span');
+        useLabel.className = 'image-use-label';
+        useLabel.textContent = used ? 'Used' : 'Unused';
+        useInput.addEventListener('change', () => toggleImageUsage(path, useInput.checked));
+        useToggle.append(useInput, useSwitch, useLabel);
+
         const reduceButton = imageActionButton('Reduce', 'Reduce file size', () => openImageReduceDialog(path), false);
         reduceButton.classList.add('image-reduce-button');
         actions.append(
+            useToggle,
             reduceButton,
-            imageActionButton('↑', 'Move up', () => moveImage(index, -1), index === 0),
-            imageActionButton('↓', 'Move down', () => moveImage(index, 1), index === h.images.length - 1),
-            imageActionButton('×', 'Remove', () => removeImage(index), false),
+            imageActionButton('↑', 'Move up', () => moveImage(index, -1), !used || index === 0),
+            imageActionButton('↓', 'Move down', () => moveImage(index, 1), !used || index === (h.images || []).length - 1),
+            imageActionButton('×', 'Remove file', () => removeImagePath(path), false),
         );
         row.append(img, text, actions);
         els.imageList.appendChild(row);
@@ -2504,6 +3036,18 @@ function imageActionButton(text, title, onClick, disabled) {
     return button;
 }
 
+function toggleImageUsage(path, useOnMap) {
+    const h = activeHotspot();
+    if (!h) return;
+    setImageUse(h, path, useOnMap);
+    markDirty();
+    renderImagesList();
+    renderHotspotList();
+    renderCountryHealth();
+    renderCountries();
+    toast(useOnMap ? 'Image enabled for the public map.' : 'Image kept in the project but hidden from the public map.');
+}
+
 function moveImage(index, delta) {
     const h = activeHotspot();
     if (!h) return;
@@ -2514,10 +3058,11 @@ function moveImage(index, delta) {
     renderImagesList();
 }
 
-function removeImage(index) {
+function removeImagePath(path) {
     const h = activeHotspot();
     if (!h) return;
-    const [path] = h.images.splice(index, 1);
+    h.images = (h.images || []).filter(item => item !== path);
+    h.inactiveImages = (h.inactiveImages || []).filter(item => item !== path);
     if (state.tempStagedPaths.has(path)) { void deleteTempPath(path); state.tempStagedPaths.delete(path); }
     if (state.stagedWrites.has(path)) state.stagedWrites.delete(path);
     else state.stagedDeletes.add(path);
@@ -2528,6 +3073,7 @@ function removeImage(index) {
     renderImagesList();
     renderHotspotList();
     renderCountryHealth();
+    renderCountries();
 }
 
 async function getObjectUrlForPath(path) {
@@ -2562,7 +3108,7 @@ function confirmDeleteHotspot() {
     if (!entry || !h) return;
     const mode = document.querySelector('input[name="delete-mode"]:checked')?.value || 'hotspot';
     if (mode === 'all') {
-        (h.images || []).forEach(path => {
+        allManagedImages(h).forEach(path => {
             if (state.tempStagedPaths.has(path)) { void deleteTempPath(path); state.tempStagedPaths.delete(path); }
             if (state.stagedWrites.has(path)) state.stagedWrites.delete(path);
             else state.stagedDeletes.add(path);
@@ -2573,6 +3119,7 @@ function confirmDeleteHotspot() {
     }
     entry.hotspots.splice(state.activeHotspotIndex, 1);
     state.activeHotspotIndex = null;
+    state.mapHotspotIndex = null;
     state.selectedHotspots.clear();
     markDirty();
     els.deleteDialog.close();
@@ -2594,7 +3141,7 @@ async function prepareSaveDialog() {
         const errors = issues.filter(i => i.level === 'error');
         const warnings = issues.filter(i => i.level === 'warning');
         if (errors.length) {
-            els.saveValidationNote.innerHTML = `<div class="notice notice-error">${errors.length} blocking error${errors.length === 1 ? '' : 's'} found. Fix them before writing files.</div>`;
+            els.saveValidationNote.innerHTML = `<div class="notice notice-error">${errors.length} blocking error${errors.length === 1 ? '' : 's'} found. Fix them before applying changes.</div>`;
             els.confirmSave.disabled = true;
         } else {
             els.saveValidationNote.innerHTML = `<div class="notice ${warnings.length ? 'notice-warning' : 'notice-ok'}">No blocking errors. ${warnings.length} warning${warnings.length === 1 ? '' : 's'} remain and can be accepted.</div>`;
@@ -2644,6 +3191,7 @@ async function saveToRepository() {
         for (const path of state.stagedDeletes) await removePath(path);
 
         state.originalCatalogText = catalogText;
+        refreshAllHotspotBaselines();
         state.stagedWrites.clear();
         state.stagedDeletes.clear();
         state.tempStagedPaths.clear();
@@ -2656,7 +3204,7 @@ async function saveToRepository() {
         els.saveDialog.close();
         renderCountries();
         renderCountryHealth();
-        toast('Changes applied to the repository. You can review the Git diff and commit normally.');
+        toast('Changes applied. Review the Git diff, then commit and push normally.');
         if (switchTo) await performCountrySelection(switchTo);
     } catch (error) {
         console.error(error);
@@ -2667,20 +3215,22 @@ async function saveToRepository() {
 
 function serializeCatalog(catalog) {
     const cleaned = JSON.parse(JSON.stringify(catalog, (key, value) => key.startsWith('_') ? undefined : value));
-    return `// MAP_CATALOG — generated by the local Map Content Manager.\n` +
+    return `// MAP_CATALOG - generated by the local Map Content Manager.\n` +
         `// Public map behavior remains in data/main.js. Edit map content through /manager/.\n\n` +
         `const MAP_CATALOG = ${JSON.stringify(cleaned, null, 4)};\n`;
 }
 
 function markDirty() {
     state.dirty = true;
-    els.saveAll.textContent = 'Save Changes •';
+    els.dirtyStatus.classList.remove('hidden');
     els.resetChanges.disabled = false;
+    els.saveAll.disabled = false;
 }
 
 function clearDirtyIndicator() {
-    els.saveAll.textContent = 'Save Changes';
+    els.dirtyStatus.classList.add('hidden');
     els.resetChanges.disabled = true;
+    els.saveAll.disabled = true;
 }
 
 async function resetUnsavedChanges() {
@@ -2716,6 +3266,7 @@ async function discardUnsavedChanges(selectSlug = null) {
         normalizeCatalogRecords();
         state.dirty = false;
         state.activeHotspotIndex = null;
+        state.mapHotspotIndex = null;
         state.previewBaseView = null;
         state.previewView = null;
         clearDirtyIndicator();
@@ -2967,7 +3518,7 @@ function dedupeIssues(issues) {
 
 function formatBytes(bytes) {
     const n = Number(bytes);
-    if (!Number.isFinite(n) || n < 0) return '—';
+    if (!Number.isFinite(n) || n < 0) return '-';
     if (n < 1024) return `${n} B`;
     if (n < 1024 ** 2) return `${(n / 1024).toFixed(n < 10 * 1024 ? 1 : 0)} KB`;
     if (n < 1024 ** 3) return `${(n / 1024 ** 2).toFixed(n < 10 * 1024 ** 2 ? 1 : 0)} MB`;

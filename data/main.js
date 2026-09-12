@@ -1,4 +1,4 @@
-// main.js — Hash-routed multi-map loader for GitHub Pages.
+// main.js - Hash-routed multi-map loader for GitHub Pages.
 // Flow: read window.location.hash, lookup MAP_CATALOG, show landing or load SVG.
 // Map-specific data (hotspots, colors, geo bounds) comes from the catalog entry.
 
@@ -14,7 +14,7 @@ let _popup = null;         // popup <div>
 let _activeHotspot = null;
 let _popupHovered = false;
 let _popupPending = false;
-let _hotspotPinned = false;  // true after clicking a single hotspot — keeps popup open on mouseleave
+let _hotspotPinned = false;  // true after clicking a single hotspot - keeps popup open on mouseleave
 let _popupLastEvent = null;
 let _popupRectCached = null;
 let _hotspotBaseRadiusVB = null;
@@ -394,7 +394,7 @@ function initProvinceInteractions(states, tooltip, popup, signal) {
         });
 }
 
-// Proximity threshold (SVG viewBox units) — hotspots within this distance are merged into a cluster
+// Proximity threshold (SVG viewBox units) - hotspots within this distance are merged into a cluster
 const CLUSTER_THRESHOLD_VB = 9;
 
 // clusterHotspots: group nearby hotspots into cluster objects using greedy proximity
@@ -446,7 +446,7 @@ function initHotspots(svg, states, hotspots, tooltip, popup, signal) {
         .append('g')
         .attr('class', 'hotspot-group');
 
-    // Circle for every render item (single or cluster) — visual only, no pointer events
+    // Circle for every render item (single or cluster) - visual only, no pointer events
     const circles = groups.append('circle')
         .attr('class', d => d.type === 'cluster' ? 'hotspot hotspot--cluster' : 'hotspot')
         .attr('cx', d => d.type === 'cluster' ? d.x : d.data.x)
@@ -469,7 +469,7 @@ function initHotspots(svg, states, hotspots, tooltip, popup, signal) {
         .style('pointer-events', 'none')
         .text(d => d.members.length);
 
-    // Invisible hit-area ring — larger transparent circle on top that receives all pointer events
+    // Invisible hit-area ring - larger transparent circle on top that receives all pointer events
     const hits = groups.append('circle')
         .attr('class', 'hotspot-hit')
         .attr('cx', d => d.type === 'cluster' ? d.x : d.data.x)
@@ -484,7 +484,7 @@ function initHotspots(svg, states, hotspots, tooltip, popup, signal) {
         .on('mouseenter', function (event, d) {
             const visualCircle = this.closest('.hotspot-group').querySelector('circle.hotspot');
             if (d.type === 'cluster') {
-                // Highlight on hover — popup opens on click only
+                // Highlight on hover - popup opens on click only
                 d3.select(visualCircle)
                     .style('fill', 'rgba(0, 130, 220, 0.85)')
                     .style('stroke', 'rgb(0, 90, 200)');
@@ -511,7 +511,7 @@ function initHotspots(svg, states, hotspots, tooltip, popup, signal) {
                     .style('fill', isCluster ? 'rgba(0, 90, 180, 0.75)' : 'rgba(215, 38, 61, 0.65)')
                     .style('stroke', isCluster ? 'rgb(0, 60, 140)' : 'rgb(200, 0, 0)');
             }
-            // Cluster popup was opened by click — let it persist until dismissed
+            // Cluster popup was opened by click - let it persist until dismissed
             if (d.type === 'cluster') {
                 _tooltip.style('opacity', 0);
             } else if (!_hotspotPinned) {
@@ -733,7 +733,7 @@ function showClusterPopup(clusterData, circleEl, evt) {
 
     _popup.html(content);
 
-    // Bind click handlers to list items — clicking a name drills into the individual popup
+    // Bind click handlers to list items - clicking a name drills into the individual popup
     _popup.selectAll('.popup-cluster-list li').each(function () {
         const li = this;
         d3.select(li).on('click', function (e) {
@@ -913,7 +913,7 @@ function initZoom(svg, signal) {
     // can be thrown off by any grouping/transform layers inside the source
     // SVG), this reads the element's actual rendered screen rect and converts
     // it using the exact same screen->viewBox scale factors that mouse-drag
-    // panning and wheel-zoom already rely on elsewhere in this file — so it's
+    // panning and wheel-zoom already rely on elsewhere in this file - so it's
     // guaranteed consistent with how the rest of the map's coordinates work.
     function getElementViewBoxBounds(el) {
         try {

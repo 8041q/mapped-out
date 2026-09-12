@@ -1,3 +1,3 @@
 #!/bin/sh
 cd "$(dirname "$0")"
-python3 start_manager.py
+python3 app.py

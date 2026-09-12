@@ -14,7 +14,7 @@
 html, body { overflow-x: hidden; overscroll-behavior-x: contain; }
 body { font-family: var(--ui-font); background: #fbfbfb; color: #222; margin: 0; }
 
-/* Landing page — card grid */
+/* Landing page - card grid */
 #landing {
     max-width: 1100px;
     margin: 0 auto;
