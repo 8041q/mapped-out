@@ -3,7 +3,7 @@
  *
  * This file intentionally does not modify the public map runtime. It reads/writes the
  * repository's existing data/catalog.js and images/<country>/ structure through the
- * local repository API exposed by start_manager.py.
+ * local repository API exposed by app.py.
  */
 
 'use strict';
@@ -25,7 +25,6 @@ const IMAGE_HIGH_QUALITY_START = 0.92;
 const IMAGE_HIGH_QUALITY_MIN = 0.78;
 const IMAGE_MIN_LONG_EDGE = 1600;
 const OVERSIZED_IMAGE_BYTES = PREFERRED_MAX_IMAGE_BYTES;
-const NEAR_DUPLICATE_DISTANCE_METERS = 80;
 
 const state = {
     repositoryReady: false,
@@ -72,20 +71,20 @@ window.addEventListener('DOMContentLoaded', () => {
 
 function cacheElements() {
     const ids = [
-        'unsupported', 'repo-status', 'dirty-status', 'help-button', 'help-dialog', 'reset-changes', 'validate-all', 'save-all', 'add-country',
+        'unsupported', 'help-button', 'help-dialog', 'reset-changes', 'validate-all', 'issues-indicator', 'issues-count', 'save-all', 'review-indicator', 'add-country',
         'country-list', 'workspace', 'workspace-empty', 'country-workspace', 'country-slug',
-        'country-title', 'country-description', 'country-settings', 'replace-svg', 'import-excel',
+        'country-title', 'country-description', 'country-settings', 'replace-svg', 'import-excel', 'validate-country',
         'add-hotspot', 'country-health', 'import-history', 'hotspot-count', 'hotspot-search', 'hotspot-filter', 'hotspot-list',
         'bulk-toolbar', 'bulk-select-all', 'bulk-selected-count', 'bulk-province', 'bulk-apply-province',
         'bulk-validate', 'bulk-remove-images', 'bulk-delete', 'cleanup-unused-images',
         'editor-empty', 'hotspot-editor', 'hotspot-status-badge', 'delete-hotspot', 'field-title',
         'field-city', 'field-year', 'field-address', 'field-description', 'field-lat', 'field-lon',
         'field-province', 'field-xy', 'coordinate-message', 'apply-swap', 'image-picker',
-        'image-dropzone', 'image-list', 'map-stage', 'map-preview', 'map-zoom-in', 'map-zoom-out', 'map-zoom-reset', 'hotspot-hover-card', 'reset-position', 'svg-picker', 'excel-picker',
+        'image-dropzone', 'image-list', 'map-stage', 'map-preview', 'map-zoom-in', 'map-zoom-out', 'map-zoom-reset', 'map-label-toggle', 'hotspot-hover-card', 'reset-position', 'svg-picker', 'excel-picker',
         'country-dialog', 'country-form', 'country-dialog-title', 'slug-field-wrap', 'map-country-name', 'map-slug',
         'map-title', 'map-description', 'map-logo', 'map-logo-alt', 'map-hue', 'map-sat',
         'map-min-light', 'map-max-light', 'map-color-picker', 'map-color-preview', 'new-svg-wrap', 'map-svg', 'country-form-message',
-        'validation-dialog', 'validation-summary', 'validation-results', 'save-dialog',
+        'validation-dialog', 'validation-dialog-title', 'validation-summary', 'validation-filters', 'validation-results', 'save-dialog',
         'save-validation-note', 'change-summary', 'confirm-save', 'unsaved-dialog', 'unsaved-stay', 'unsaved-discard', 'unsaved-save', 'delete-dialog', 'delete-message',
         'confirm-delete', 'import-dialog', 'import-summary', 'import-plan', 'import-warnings',
         'confirm-import', 'image-reduce-dialog', 'image-reduce-summary', 'lossless-choice', 'image-reduce-message', 'confirm-image-reduce', 'toast'
@@ -97,6 +96,38 @@ function toCamel(id) {
     return id.replace(/-([a-z])/g, (_, c) => c.toUpperCase());
 }
 
+function enforceCountrySlugInput() {
+    if (!els.mapSlug) return;
+    const normalized = normalizeCountrySlug(els.mapSlug.value);
+    if (els.mapSlug.value !== normalized) els.mapSlug.value = normalized;
+}
+
+function setIssuesButtonState(level, count, title) {
+    if (!els.validateAll || !els.issuesIndicator || !els.issuesCount) return;
+    els.issuesIndicator.className = `status-dot ${level || 'neutral'}`;
+    els.issuesCount.textContent = String(count ?? '—');
+    els.validateAll.title = title || 'Project issues';
+}
+
+function updateIssuesButton() {
+    if (!state.repositoryReady || !state.catalog) return;
+    let errors = 0;
+    let warnings = 0;
+    Object.keys(state.catalog).forEach(slug => {
+        // Count validation messages, not affected hotspots. While a country has not
+        // been opened yet, ignore the transient “SVG has not been loaded” state.
+        const issues = validateCountry(slug).filter(issue => issue.text !== 'SVG has not been loaded.');
+        errors += issues.filter(issue => issue.level === 'error').length;
+        warnings += issues.filter(issue => issue.level === 'warning').length;
+    });
+    const count = errors + warnings;
+    const level = errors ? 'error' : warnings ? 'warning' : 'ok';
+    const parts = [];
+    if (errors) parts.push(`${errors} blocking`);
+    if (warnings) parts.push(`${warnings} to review`);
+    setIssuesButtonState(level, count, parts.length ? parts.join(' · ') : 'No known issues');
+}
+
 function bindEvents() {
     document.querySelectorAll('[data-font-size]').forEach(button => {
         button.addEventListener('click', () => setFontSize(button.dataset.fontSize));
@@ -106,6 +137,7 @@ function bindEvents() {
     els.countrySettings.addEventListener('click', () => openCountryDialog('edit'));
     els.replaceSvg.addEventListener('click', () => els.svgPicker.click());
     els.importExcel.addEventListener('click', () => els.excelPicker.click());
+    els.validateCountry.addEventListener('click', runCountryValidationDialog);
     els.addHotspot.addEventListener('click', addHotspot);
     els.hotspotSearch.addEventListener('input', renderHotspotList);
     els.hotspotFilter.addEventListener('change', renderHotspotList);
@@ -136,6 +168,8 @@ function bindEvents() {
         els[key].addEventListener('input', updateColorPreviewFromFields);
     });
     els.mapColorPicker.addEventListener('input', applyColorPickerToFields);
+    els.mapLabelToggle.addEventListener('change', updateRegionLabelVisibility);
+    els.mapSlug.addEventListener('input', enforceCountrySlugInput);
     els.mapZoomIn.addEventListener('click', () => zoomPreview(0.72));
     els.mapZoomOut.addEventListener('click', () => zoomPreview(1.38));
     els.mapZoomReset.addEventListener('click', resetPreviewView);
@@ -402,7 +436,7 @@ async function initializeRepository() {
         if (!response.ok) throw new Error('The local manager API is unavailable.');
         const info = await response.json();
         if (!info.validRepository) {
-            throw new Error('Expected data/catalog.js and images/ beside start_manager.py.');
+            throw new Error('Expected data/catalog.js and images/ beside app.py.');
         }
 
         state.repositoryReady = true;
@@ -427,7 +461,6 @@ async function initializeRepository() {
         state.previewView = null;
         clearDirtyIndicator();
 
-        els.repoStatus.innerHTML = `<i class="repo-dot"></i><span>${escapeHtml(state.repositoryName)}</span>`;
         els.unsupported.classList.add('hidden');
         els.addCountry.disabled = false;
         els.validateAll.disabled = false;
@@ -439,7 +472,7 @@ async function initializeRepository() {
     } catch (error) {
         console.error(error);
         state.repositoryReady = false;
-        els.repoStatus.innerHTML = '<i class="repo-dot error"></i><span>Repository not detected</span>';
+        setIssuesButtonState('error', '!', 'Repository not detected');
         els.unsupported.textContent = error.message || 'Could not detect the repository.';
         els.unsupported.classList.remove('hidden');
         els.countryList.innerHTML = '<div class="empty-state compact">Repository could not be loaded.</div>';
@@ -464,7 +497,7 @@ function normalizeCatalogRecords() {
     Object.entries(state.catalog).forEach(([slug, entry]) => {
         entry.hotspots = Array.isArray(entry.hotspots) ? entry.hotspots : [];
         entry.countryName = entry.countryName || countryNameFromEntry(entry);
-        entry.colorConfig = entry.colorConfig || { baseHue: 175, sat: '50%', minLight: 75, maxLight: 85 };
+        entry.colorConfig = normalizeColorConfig(entry.colorConfig);
         entry.geoBounds = entry.geoBounds || null;
         entry.hotspots.forEach(h => {
             h.title = h.title || '';
@@ -529,6 +562,7 @@ function renderCountries() {
     const entries = Object.entries(state.catalog || {});
     if (!entries.length) {
         els.countryList.innerHTML = '<div class="empty-state compact">No maps yet.</div>';
+        updateIssuesButton();
         return;
     }
     entries.forEach(([slug, entry]) => {
@@ -553,6 +587,7 @@ function renderCountries() {
         button.addEventListener('click', () => selectCountry(slug));
         els.countryList.appendChild(button);
     });
+    updateIssuesButton();
 }
 
 async function selectCountry(slug, { skipDirtyCheck = false } = {}) {
@@ -835,6 +870,8 @@ function applyBulkProvince() {
         if (!h) return;
         h.provinceId = provinceId;
         h._provinceOverride = true;
+        h._provinceMismatch = '';
+        if (!allManagedImages(h).length) h._assetFolder = generatedFacilityFolder(h, state.activeSlug);
     });
     markDirty();
     renderHotspotList();
@@ -855,9 +892,10 @@ function validateBulkSelection() {
         if (!itemIssues.length) issues.push({ level: 'ok', text: `${h.title || `Hotspot ${index + 1}`}: valid.` });
         else itemIssues.forEach(issue => issues.push({ ...issue, text: `${h.title || `Hotspot ${index + 1}`}: ${issue.text}` }));
     });
-    els.validationSummary.innerHTML = `<div class="health-strip"><span class="health-pill ok">${state.selectedHotspots.size} selected</span></div>`;
+    els.validationDialogTitle.textContent = 'Validate selected hotspots';
+    els.validationSummary.innerHTML = `<p class="muted">${state.selectedHotspots.size} hotspot${state.selectedHotspots.size === 1 ? '' : 's'} selected.</p>`;
     els.validationResults.innerHTML = '';
-    issues.forEach(issue => appendValidationItem(els.validationResults, issue));
+    issues.filter(issue => issue.level !== 'info').forEach(issue => appendValidationItem(els.validationResults, issue));
     els.validationDialog.showModal();
 }
 
@@ -1021,7 +1059,7 @@ function syncEditorTextFields() {
     h.address = els.fieldAddress.value;
     h.description = els.fieldDescription.value;
     if (!h.country) h.country = countryNameFromEntry(activeEntry());
-    if (!h._assetFolder || !allManagedImages(h).length) h._assetFolder = generatedFacilityFolder(h);
+    if (!h._assetFolder || !allManagedImages(h).length) h._assetFolder = generatedFacilityFolder(h, state.activeSlug);
     markDirty();
     renderHotspotList();
     renderCountryHealth();
@@ -1043,6 +1081,7 @@ function syncCoordinateFields() {
             h.provinceId = detectProvinceAtXY(xy.x, xy.y) || h.provinceId || '';
             h._positionSource = 'coordinates';
             h._provinceMismatch = '';
+            if (!allManagedImages(h).length) h._assetFolder = generatedFacilityFolder(h, state.activeSlug);
         }
     }
     markDirty();
@@ -1059,6 +1098,7 @@ function syncProvinceField() {
     h.provinceId = els.fieldProvince.value;
     h._provinceOverride = true;
     h._provinceMismatch = '';
+    if (!allManagedImages(h).length) h._assetFolder = generatedFacilityFolder(h, state.activeSlug);
     markDirty();
     renderHotspotList();
     renderCountryHealth();
@@ -1108,9 +1148,9 @@ function addHotspot() {
         y: xy.y,
         images: [],
         inactiveImages: [],
-        _assetFolder: 'new_hotspot',
         _positionSource: 'manual-new',
     };
+    hotspot._assetFolder = generatedFacilityFolder(hotspot, state.activeSlug);
     captureHotspotBaseline(hotspot);
     entry.hotspots.push(hotspot);
     state.activeHotspotIndex = entry.hotspots.length - 1;
@@ -1204,7 +1244,9 @@ function backfillGeographicCoordinates(slug) {
                 if (optionalFiniteNumber(h._baselinePosition.lon) == null) h._baselinePosition.lon = ll.lon;
             }
         }
-        h._assetFolder = h._assetFolder || inferAssetFolder(h, slug);
+        h._assetFolder = allManagedImages(h).length
+            ? inferAssetFolder(h, slug)
+            : generatedFacilityFolder(h, slug);
     });
 }
 
@@ -1237,6 +1279,7 @@ function syncHotspotFromCoordinates(h, { redetectProvince = false } = {}) {
     if (redetectProvince || !h.provinceId || !h._provinceOverride) {
         h.provinceId = detectProvinceAtXY(xy.x, xy.y) || h.provinceId || '';
     }
+    if (!allManagedImages(h).length) h._assetFolder = generatedFacilityFolder(h, state.activeSlug);
 }
 
 function renderMapPreview() {
@@ -1261,28 +1304,77 @@ function renderMapPreview() {
     svg.removeAttribute('height');
     svg.setAttribute('preserveAspectRatio', 'xMidYMid meet');
     applyPreviewMapColors(svg, activeEntry());
+    renderRegionLabels(svg);
     initializeMapNavigation(svg);
     updatePreviewMarkers();
 }
 
 function applyPreviewMapColors(svg, entry) {
     if (!svg || !entry) return;
-    const config = entry.colorConfig || {};
-    const baseHue = Number(config.baseHue ?? 175);
-    const satNumber = clamp(parseFloat(String(config.sat ?? '50').replace('%', '')) || 50, 0, 100);
+    const config = normalizeColorConfig(entry.colorConfig);
+    const anchor = hexToHsl(config.baseColor);
+    const baseHue = anchor?.h ?? Number(config.baseHue ?? 175);
+    const satNumber = anchor?.s ?? clamp(parseFloat(String(config.sat ?? '50').replace('%', '')) || 50, 0, 100);
     const minLight = clamp(Number(config.minLight ?? 75), 0, 100);
     const maxLight = clamp(Number(config.maxLight ?? 85), 0, 100);
+    const exactColour = /^#[0-9a-f]{6}$/i.test(config.baseColor) && Math.abs(maxLight - minLight) < 0.0001
+        ? config.baseColor.toLowerCase()
+        : '';
     const shapes = Array.from(svg.querySelectorAll('path[id], polygon[id], polyline[id], rect[id], circle[id], ellipse[id]'))
-        .filter(el => el.id && el.id !== 'hotspots-layer' && el.id !== 'manager-hotspot-layer');
+        .filter(el => el.id && el.id !== 'hotspots-layer' && el.id !== 'manager-hotspot-layer' && el.id !== 'manager-region-label-layer');
     shapes.forEach((el, index) => {
         const t = shapes.length > 1 ? index / (shapes.length - 1) : 0.5;
-        const jitter = ((index * 37) % 9) - 4;
         const light = maxLight - t * (maxLight - minLight);
-        el.setAttribute('fill', `hsl(${baseHue + jitter}, ${satNumber}%, ${light}%)`);
+        const fill = exactColour || `hsl(${round(baseHue, 4)}, ${round(satNumber, 4)}%, ${round(light, 4)}%)`;
+        el.setAttribute('fill', fill);
         el.setAttribute('stroke', 'rgba(255,255,255,.92)');
         el.setAttribute('stroke-width', '0.6');
         el.setAttribute('vector-effect', 'non-scaling-stroke');
     });
+}
+
+function renderRegionLabels(svg = previewSvg()) {
+    const meta = state.svgMeta.get(state.activeSlug);
+    if (!svg || !meta) return;
+    svg.querySelector('#manager-region-label-layer')?.remove();
+    const layer = document.createElementNS('http://www.w3.org/2000/svg', 'g');
+    layer.id = 'manager-region-label-layer';
+    layer.classList.toggle('hidden', els.mapLabelToggle && !els.mapLabelToggle.checked);
+    layer.setAttribute('aria-hidden', 'true');
+    const shortSide = Math.min(meta.viewBox.width, meta.viewBox.height);
+    meta.regions.forEach(region => {
+        const shape = svg.querySelector(`[id="${cssEscape(region.id)}"]`);
+        if (!shape || shape.closest('#manager-region-label-layer')) return;
+        let box;
+        try { box = shape.getBBox(); } catch (_) { return; }
+        if (!box || box.width <= 0 || box.height <= 0) return;
+        const text = document.createElementNS('http://www.w3.org/2000/svg', 'text');
+        text.setAttribute('x', round(box.x + box.width / 2, 3));
+        text.setAttribute('y', round(box.y + box.height / 2, 3));
+        const localSize = Math.min(box.width, box.height) * 0.28;
+        const fontSize = clamp(localSize, shortSide / 180, shortSide / 48);
+        text.setAttribute('font-size', round(fontSize, 3));
+        text.setAttribute('class', 'manager-region-label');
+        text.textContent = regionCodeLabel(region.id);
+        layer.appendChild(text);
+    });
+    svg.appendChild(layer);
+}
+
+function updateRegionLabelVisibility() {
+    const layer = previewSvg()?.querySelector('#manager-region-label-layer');
+    if (layer) layer.classList.toggle('hidden', !els.mapLabelToggle.checked);
+}
+
+function regionCodeLabel(regionId) {
+    const id = String(regionId || '').trim();
+    const parts = id.split('-').filter(Boolean);
+    return (parts.length > 1 ? parts[parts.length - 1] : id).toUpperCase();
+}
+
+function cssEscape(value) {
+    if (window.CSS?.escape) return CSS.escape(String(value));
+    return String(value).replace(/([ !"#$%&'()*+,./:;<=>?@[\\\]^`{|}~])/g, '\\$1');
 }
 
 function previewSvg() {
@@ -1594,6 +1686,7 @@ function beginMarkerDrag(event) {
             h._positionSource = 'manual-drag';
             h._provinceOverride = false;
             h._provinceMismatch = '';
+            if (!allManagedImages(h).length) h._assetFolder = generatedFacilityFolder(h, state.activeSlug);
             hit.dataset.suppressClick = '1';
         }
 
@@ -1786,12 +1879,14 @@ function openCountryDialog(mode) {
         els.mapDescription.value = entry.description || '';
         els.mapLogo.value = entry.logoUrl || '';
         els.mapLogoAlt.value = entry.logoAlt || '';
-        els.mapHue.value = entry.colorConfig?.baseHue ?? 175;
-        els.mapSat.value = entry.colorConfig?.sat ?? '50%';
-        els.mapMinLight.value = entry.colorConfig?.minLight ?? 75;
-        els.mapMaxLight.value = entry.colorConfig?.maxLight ?? 85;
+        const colorConfig = normalizeColorConfig(entry.colorConfig);
+        els.mapHue.value = colorConfig.baseHue;
+        els.mapSat.value = colorConfig.sat;
+        els.mapMinLight.value = colorConfig.minLight;
+        els.mapMaxLight.value = colorConfig.maxLight;
+        els.mapColorPicker.value = colorConfig.baseColor;
     }
-    updateColorPreviewFromFields();
+    updateColorPreviewFromFields({ preservePicker: mode === 'edit' });
     els.countryDialog.showModal();
 }
 
@@ -1812,9 +1907,10 @@ async function handleCountryFormSubmit(event) {
 
 async function createCountryFromDialog() {
     const countryName = els.mapCountryName.value.trim();
-    const slug = normalizeSlug(els.mapSlug.value);
+    const slug = normalizeCountrySlug(els.mapSlug.value);
     if (!countryName) throw new Error('Enter a country name.');
-    if (!slug) throw new Error('Enter a country slug.');
+    if (!slug) throw new Error('Enter a country slug using lowercase letters only.');
+    if (!/^[a-z]+(?:-[a-z]+)*$/.test(slug)) throw new Error('Country slug can only contain lowercase letters and hyphens.');
     if (state.catalog[slug]) throw new Error(`A map named “${slug}” already exists.`);
     const file = els.mapSvg.files?.[0];
     if (!file) throw new Error('Choose the country SVG.');
@@ -1864,29 +1960,57 @@ function updateCountryFromDialog() {
     renderMapPreview();
 }
 
-function readColorConfigFromDialog() {
-    const hueRaw = Number(els.mapHue.value);
-    const minRaw = Number(els.mapMinLight.value);
-    const maxRaw = Number(els.mapMaxLight.value);
-    const hue = Number.isFinite(hueRaw) ? Math.max(0, Math.min(360, hueRaw)) : 175;
-    const minCandidate = Number.isFinite(minRaw) ? Math.max(0, Math.min(100, minRaw)) : 75;
-    const maxCandidate = Number.isFinite(maxRaw) ? Math.max(0, Math.min(100, maxRaw)) : 85;
+function normalizeColorConfig(config = {}) {
+    const hueRaw = Number(config?.baseHue);
+    const satRaw = parseFloat(String(config?.sat ?? '50').replace('%', ''));
+    const minRaw = Number(config?.minLight);
+    const maxRaw = Number(config?.maxLight);
+    const baseHue = Number.isFinite(hueRaw) ? clamp(hueRaw, 0, 360) : 175;
+    const satNumber = Number.isFinite(satRaw) ? clamp(satRaw, 0, 100) : 50;
+    const minCandidate = Number.isFinite(minRaw) ? clamp(minRaw, 0, 100) : 75;
+    const maxCandidate = Number.isFinite(maxRaw) ? clamp(maxRaw, 0, 100) : 85;
     const minLight = Math.min(minCandidate, maxCandidate);
     const maxLight = Math.max(minCandidate, maxCandidate);
+    const supplied = /^#[0-9a-f]{6}$/i.test(String(config?.baseColor || '')) ? String(config.baseColor).toLowerCase() : '';
+    const baseColor = supplied || hslToHex(baseHue, satNumber, (minLight + maxLight) / 2);
+    const anchor = hexToHsl(baseColor);
     return {
-        baseHue: hue,
-        sat: `${readSaturationNumber()}%`,
+        ...config,
+        baseColor,
+        baseHue: anchor ? round(anchor.h, 2) : baseHue,
+        sat: `${round(anchor ? anchor.s : satNumber, 2)}%`,
         minLight,
         maxLight,
     };
 }
 
-function readSaturationNumber() {
-    const value = parseFloat(String(els.mapSat.value || '').replace('%', ''));
-    return Number.isFinite(value) ? Math.max(0, Math.min(100, value)) : 50;
+function readColorConfigFromDialog() {
+    const hueRaw = Number(els.mapHue.value);
+    const minRaw = Number(els.mapMinLight.value);
+    const maxRaw = Number(els.mapMaxLight.value);
+    const hue = Number.isFinite(hueRaw) ? clamp(hueRaw, 0, 360) : 175;
+    const minCandidate = Number.isFinite(minRaw) ? clamp(minRaw, 0, 100) : 75;
+    const maxCandidate = Number.isFinite(maxRaw) ? clamp(maxRaw, 0, 100) : 85;
+    const minLight = Math.min(minCandidate, maxCandidate);
+    const maxLight = Math.max(minCandidate, maxCandidate);
+    const baseColor = /^#[0-9a-f]{6}$/i.test(els.mapColorPicker.value)
+        ? els.mapColorPicker.value.toLowerCase()
+        : hslToHex(hue, readSaturationNumber(), (minLight + maxLight) / 2);
+    return normalizeColorConfig({
+        baseColor,
+        baseHue: hue,
+        sat: `${readSaturationNumber()}%`,
+        minLight,
+        maxLight,
+    });
 }
 
-function updateColorPreviewFromFields() {
+function readSaturationNumber() {
+    const value = parseFloat(String(els.mapSat.value || '').replace('%', ''));
+    return Number.isFinite(value) ? clamp(value, 0, 100) : 50;
+}
+
+function updateColorPreviewFromFields({ preservePicker = false } = {}) {
     if (!els.mapColorPreview || !els.mapColorPicker) return;
     const hue = ((Number(els.mapHue.value) || 0) % 360 + 360) % 360;
     const sat = readSaturationNumber();
@@ -1894,20 +2018,31 @@ function updateColorPreviewFromFields() {
     let maxLight = Number(els.mapMaxLight.value);
     if (!Number.isFinite(minLight)) minLight = 75;
     if (!Number.isFinite(maxLight)) maxLight = 85;
-    minLight = Math.max(0, Math.min(100, minLight));
-    maxLight = Math.max(0, Math.min(100, maxLight));
+    minLight = clamp(minLight, 0, 100);
+    maxLight = clamp(maxLight, 0, 100);
     const low = Math.min(minLight, maxLight);
     const high = Math.max(minLight, maxLight);
-    els.mapColorPreview.style.background = `linear-gradient(90deg, hsl(${hue} ${sat}% ${low}%), hsl(${hue} ${sat}% ${high}%))`;
-    els.mapColorPicker.value = hslToHex(hue, sat, (low + high) / 2);
+    if (!preservePicker) els.mapColorPicker.value = hslToHex(hue, sat, (low + high) / 2);
+    const selected = els.mapColorPicker.value.toLowerCase();
+    els.mapColorPreview.style.background = selected;
+    els.mapColorPreview.title = `Selected colour ${selected}`;
 }
 
 function applyColorPickerToFields() {
-    const hsl = hexToHsl(els.mapColorPicker.value);
+    const selected = String(els.mapColorPicker.value || '').toLowerCase();
+    const hsl = hexToHsl(selected);
     if (!hsl) return;
-    els.mapHue.value = String(Math.round(hsl.h));
-    els.mapSat.value = `${Math.round(hsl.s)}%`;
-    updateColorPreviewFromFields();
+
+    // A picked colour is exact, not merely a hue/saturation hint. Flatten the legacy
+    // lightness range to the selected colour so the swatch, manager map and public map
+    // all show the same colour. The advanced HSL fields can still be changed afterwards
+    // if a deliberate lightness range is wanted.
+    els.mapHue.value = String(round(hsl.h, 4));
+    els.mapSat.value = `${round(hsl.s, 4)}%`;
+    els.mapMinLight.value = String(round(hsl.l, 4));
+    els.mapMaxLight.value = String(round(hsl.l, 4));
+    els.mapColorPreview.style.background = selected;
+    els.mapColorPreview.title = `Selected colour ${selected}`;
 }
 
 function hexToHsl(hex) {
@@ -2167,7 +2302,7 @@ async function confirmExcelImport() {
                 y: NaN,
                 images: [],
                 inactiveImages: [],
-                _assetFolder: generatedFacilityFolder(record),
+                _assetFolder: '',
             };
             entry.hotspots.push(hotspot);
             targetIndex = entry.hotspots.length - 1;
@@ -2176,6 +2311,7 @@ async function confirmExcelImport() {
 
         const coordinate = validateCoordinates(state.activeSlug, hotspot.lat, hotspot.lon);
         if (coordinate.level !== 'error') syncHotspotFromCoordinates(hotspot, { redetectProvince: true });
+        if (!allManagedImages(hotspot).length) hotspot._assetFolder = generatedFacilityFolder(hotspot, state.activeSlug);
         if (!hotspot._baselinePosition) captureHotspotBaseline(hotspot);
         hotspot._importedFromExcel = true;
         hotspot._importedSession = true;
@@ -2309,7 +2445,7 @@ function importedChanges(existing, record) {
 function applyImportedRecord(target, record) {
     const preservedImages = target.images || [];
     const preservedInactiveImages = target.inactiveImages || [];
-    const preservedFolder = target._assetFolder;
+    const preservedFolder = allManagedImages(target).length ? target._assetFolder : '';
     const required = ['title', 'lat', 'lon'];
     required.forEach(key => { target[key] = record[key]; });
     ['country', 'city', 'year', 'address', 'description'].forEach(key => {
@@ -2317,7 +2453,7 @@ function applyImportedRecord(target, record) {
     });
     target.images = preservedImages;
     target.inactiveImages = preservedInactiveImages;
-    target._assetFolder = preservedFolder || inferAssetFolder(target, state.activeSlug) || generatedFacilityFolder(target);
+    target._assetFolder = preservedFolder || inferAssetFolder(target, state.activeSlug) || generatedFacilityFolder(target, state.activeSlug);
 }
 
 function importPlanCounts(plan) {
@@ -2414,29 +2550,39 @@ function hotspotValidationStatus(slug, h, index = null) {
     return { level: 'ok', label: 'Valid' };
 }
 
+function provinceDisplayName(slug, provinceId) {
+    const id = String(provinceId || '').trim();
+    if (!id) return 'unassigned';
+    const region = state.svgMeta.get(slug)?.regions?.find(item => item.id === id);
+    return region?.name && region.name !== id ? `${region.name} (${id})` : id;
+}
+
+function provinceMismatchText(slug, h) {
+    const detected = provinceDisplayName(slug, h._provinceMismatch);
+    const assigned = provinceDisplayName(slug, h.provinceId);
+    return `Coordinates fall in ${detected}; assigned to ${assigned}.`;
+}
+
 function validateHotspot(slug, h, { index = null } = {}) {
     const issues = [];
     if (!String(h.title || '').trim()) issues.push({ level: 'error', text: 'Facility name is missing.' });
     const coordinate = validateCoordinates(slug, h.lat, h.lon);
     if (coordinate.level !== 'ok') issues.push({ level: coordinate.level, text: coordinate.message });
-    if (!Number.isFinite(Number(h.x)) || !Number.isFinite(Number(h.y))) issues.push({ level: 'error', text: 'SVG x/y position is missing.' });
+    if (!Number.isFinite(Number(h.x)) || !Number.isFinite(Number(h.y))) issues.push({ level: 'error', text: 'Map position is missing.' });
     const meta = state.svgMeta.get(slug);
     if (!h.provinceId) issues.push({ level: 'error', text: 'Province/state is required.' });
-    else if (meta && !meta.regions.some(r => r.id === h.provinceId)) issues.push({ level: 'error', text: `Province ID ${h.provinceId} does not exist in the current SVG.` });
+    else if (meta && !meta.regions.some(r => r.id === h.provinceId)) issues.push({ level: 'error', text: `Province/state ${h.provinceId} is not in the current SVG.` });
 
-    // Optional information is informational only; it must not turn the map marker yellow.
-    if (!String(h.city || '').trim()) issues.push({ level: 'info', text: 'City/region is not provided (optional).' });
-    if (!String(h.description || '').trim()) issues.push({ level: 'info', text: 'Case description is not provided (optional).' });
-    if (!h.images?.length) issues.push({ level: 'warning', text: h.inactiveImages?.length ? 'No images are currently enabled for the public map.' : 'No images have been added.' });
-    if (h._importConflict) issues.push({ level: 'warning', text: 'This hotspot came from a manually resolved Excel match.' });
-    if (h._provinceMismatch) issues.push({ level: 'warning', text: `Marker geometry suggests province/state ${h._provinceMismatch} instead of ${h.provinceId || 'none'}.` });
+    if (!h.images?.length) issues.push({ level: 'warning', text: h.inactiveImages?.length ? 'No images are enabled for the public map.' : 'No images added.' });
+    if (h._importConflict) issues.push({ level: 'warning', text: 'Excel match was resolved manually.' });
+    if (h._provinceMismatch) issues.push({ level: 'warning', text: provinceMismatchText(slug, h) });
 
     for (const path of h.images || []) {
         const stat = state.fileStats.get(path);
         const optimized = state.imageOptimizationMeta.get(path);
         const size = optimized?.finalBytes ?? stat?.size;
         if (Number.isFinite(size) && size > OVERSIZED_IMAGE_BYTES) {
-            issues.push({ level: 'warning', text: `${path.split('/').pop()} is ${formatBytes(size)}, above the preferred 4 MB maximum. Use Reduce to optimize it.` });
+            issues.push({ level: 'warning', text: `${path.split('/').pop()} is ${formatBytes(size)}; preferred max is 4 MB.` });
         }
     }
 
@@ -2445,13 +2591,10 @@ function validateHotspot(slug, h, { index = null } = {}) {
         entry.hotspots.forEach((other, otherIndex) => {
             if (otherIndex === index) return;
             const sameName = normalizedText(other.title) && normalizedText(other.title) === normalizedText(h.title);
-            const sameCity = normalizedText(other.city) === normalizedText(h.city);
-            if (sameName && sameCity) issues.push({ level: 'warning', text: `Possible duplicate of hotspot ${otherIndex + 1}.` });
-            else if (Number.isFinite(Number(h.lat)) && Number.isFinite(Number(h.lon)) && Number.isFinite(Number(other.lat)) && Number.isFinite(Number(other.lon))) {
-                const distance = haversineMeters(h.lat, h.lon, other.lat, other.lon);
-                if (distance <= NEAR_DUPLICATE_DISTANCE_METERS && textSimilarity(h.title, other.title) >= 0.7) {
-                    issues.push({ level: 'warning', text: `Very close to “${other.title || `hotspot ${otherIndex + 1}`}” (${Math.round(distance)} m).` });
-                }
+            const sameCity = normalizedText(other.city) && normalizedText(other.city) === normalizedText(h.city);
+            if (sameName && (sameCity || !normalizedText(h.city) || !normalizedText(other.city))) {
+                const names = [h.title || `Hotspot ${index + 1}`, other.title || `Hotspot ${otherIndex + 1}`].sort((a, b) => a.localeCompare(b));
+                issues.push({ level: 'warning', text: `Possible duplicate: “${names[0]}” / “${names[1]}”.` });
             }
         });
     }
@@ -2465,19 +2608,17 @@ function validateCountry(slug) {
     if (!String(entry.countryName || '').trim()) issues.push({ level: 'error', text: 'Country name is missing.' });
     if (!entry.title) issues.push({ level: 'error', text: 'Public map title is missing.' });
     if (!entry.svgUrl) issues.push({ level: 'error', text: 'SVG path is missing.' });
-    if (!meta) issues.push({ level: 'error', text: 'SVG has not been loaded/validated.' });
+    if (!meta) issues.push({ level: 'error', text: 'SVG has not been loaded.' });
     else {
-        if (!meta.regions.length) issues.push({ level: 'error', text: 'No province/state geometry IDs were found in the SVG.' });
+        if (!meta.regions.length) issues.push({ level: 'error', text: 'No province/state IDs found in the SVG.' });
         if (!entry.geoBounds) issues.push({ level: 'error', text: 'Geographic bounds are missing.' });
     }
-    if (!entry.hotspots.length) issues.push({ level: 'warning', text: 'This country has no hotspots yet.' });
+    if (!entry.hotspots.length) issues.push({ level: 'warning', text: 'No hotspots yet.' });
     entry.hotspots.forEach((h, index) => {
-        validateHotspot(slug, h, { index }).forEach(issue => issues.push({ ...issue, text: `${h.title || `Hotspot ${index + 1}`}: ${issue.text}` }));
+        validateHotspot(slug, h, { index }).forEach(issue => issues.push({ ...issue, hotspotIndex: index, text: `${h.title || `Hotspot ${index + 1}`}: ${issue.text}` }));
     });
     return dedupeIssues(issues);
 }
-
-
 
 async function hydrateImageStatsForCountry(slug) {
     const entry = state.catalog?.[slug];
@@ -2507,34 +2648,34 @@ async function hydrateImageStatsForCountry(slug) {
 
 async function validateCountryDeep(slug) {
     const entry = state.catalog[slug];
-    const issues = validateCountry(slug);
     const referencedImages = new Map();
 
-    entry.hotspots.forEach((h, index) => {
+    entry.hotspots.forEach(h => {
         if (Number.isFinite(Number(h.x)) && Number.isFinite(Number(h.y)) && h.provinceId) {
             const detected = detectProvinceAtXY(h.x, h.y);
             h._provinceMismatch = detected && detected !== h.provinceId ? detected : '';
-            if (h._provinceMismatch) {
-                issues.push({ level: 'warning', text: `${h.title || `Hotspot ${index + 1}`}: coordinates fall inside ${detected}, but province/state is ${h.provinceId}.` });
-            }
         }
+    });
+
+    const issues = validateCountry(slug);
+    entry.hotspots.forEach((h, index) => {
         for (const path of allManagedImages(h)) {
             const isInactive = (h.inactiveImages || []).includes(path);
             if (!referencedImages.has(path)) referencedImages.set(path, []);
-            referencedImages.get(path).push(`${h.title || `Hotspot ${index + 1}`}${isInactive ? ' (not used)' : ''}`);
+            referencedImages.get(path).push(`${h.title || `Hotspot ${index + 1}`}${isInactive ? ' (unused)' : ''}`);
             const stat = state.fileStats.get(path);
             if (state.stagedDeletes.has(path)) {
-                issues.push({ level: 'error', text: `${h.title || `Hotspot ${index + 1}`}: referenced image is staged for deletion: ${path}.` });
+                issues.push({ level: 'error', hotspotIndex: index, text: `${h.title || `Hotspot ${index + 1}`}: image staged for deletion — ${path.split('/').pop()}.` });
             } else if (stat && stat.exists === false && !state.stagedWrites.has(path)) {
-                issues.push({ level: 'error', text: `${h.title || `Hotspot ${index + 1}`}: referenced image is missing: ${path}.` });
-            } else if (Number.isFinite(stat?.size) && stat.size > OVERSIZED_IMAGE_BYTES) {
-                issues.push({ level: isInactive ? 'info' : 'warning', text: `${h.title || `Hotspot ${index + 1}`}: ${path.split('/').pop()} is ${formatBytes(stat.size)}, above the preferred 4 MB maximum${isInactive ? ' (currently not used on the public map)' : ''}.` });
+                issues.push({ level: 'error', hotspotIndex: index, text: `${h.title || `Hotspot ${index + 1}`}: missing image — ${path.split('/').pop()}.` });
+            } else if (!isInactive && Number.isFinite(stat?.size) && stat.size > OVERSIZED_IMAGE_BYTES) {
+                issues.push({ level: 'warning', hotspotIndex: index, text: `${h.title || `Hotspot ${index + 1}`}: ${path.split('/').pop()} is ${formatBytes(stat.size)} (over 4 MB).` });
             }
         }
     });
 
     for (const [path, owners] of referencedImages) {
-        if (owners.length > 1) issues.push({ level: 'warning', text: `Image path is referenced by multiple hotspots (${owners.join(', ')}): ${path}.` });
+        if (owners.length > 1) issues.push({ level: 'warning', text: `Image is referenced by multiple hotspots (${owners.join(', ')}): ${path}.` });
     }
 
     const hashes = new Map();
@@ -2545,9 +2686,7 @@ async function validateCountryDeep(slug) {
         hashes.get(hash).push(path);
     }
     for (const paths of hashes.values()) {
-        if (paths.length > 1) {
-            issues.push({ level: 'warning', text: `Duplicate image content found in ${paths.length} files: ${paths.map(path => path.split('/').pop()).join(', ')}.` });
-        }
+        if (paths.length > 1) issues.push({ level: 'warning', text: `Duplicate image content: ${paths.map(path => path.split('/').pop()).join(', ')}.` });
     }
 
     for (let i = 0; i < entry.hotspots.length; i++) {
@@ -2555,15 +2694,8 @@ async function validateCountryDeep(slug) {
             const a = entry.hotspots[i];
             const b = entry.hotspots[j];
             const similarity = textSimilarity(a.title, b.title);
-            const sameName = normalizedText(a.title) && normalizedText(a.title) === normalizedText(b.title);
-            if (sameName || similarity >= 0.92) {
-                issues.push({ level: 'warning', text: `Possible duplicate facilities: “${a.title || `Hotspot ${i + 1}`}” and “${b.title || `Hotspot ${j + 1}`}”.` });
-            }
-            if ([a.lat, a.lon, b.lat, b.lon].every(value => Number.isFinite(Number(value)))) {
-                const distance = haversineMeters(a.lat, a.lon, b.lat, b.lon);
-                if (distance <= NEAR_DUPLICATE_DISTANCE_METERS) {
-                    issues.push({ level: 'warning', text: `Hotspots ${i + 1} and ${j + 1} are only ${Math.round(distance)} m apart${similarity >= 0.65 ? ' and have similar names' : ''}.` });
-                }
+            if (similarity >= 0.92 && normalizedText(a.title) !== normalizedText(b.title)) {
+                issues.push({ level: 'warning', hotspotIndex: i, text: `Possible duplicate: “${a.title || `Hotspot ${i + 1}`}” / “${b.title || `Hotspot ${j + 1}`}”.` });
             }
         }
     }
@@ -2575,10 +2707,10 @@ async function validateCountryDeep(slug) {
         const unused = files.filter(file => imageExt.test(file.path) && !keep.has(file.path) && !state.stagedDeletes.has(file.path));
         if (unused.length) {
             const total = unused.reduce((sum, file) => sum + Number(file.size || 0), 0);
-            issues.push({ level: 'warning', text: `${unused.length} unused image file${unused.length === 1 ? '' : 's'} found (${formatBytes(total)}). Use “Find unused images” to review and stage them for removal.` });
+            issues.push({ level: 'warning', text: `${unused.length} unused image file${unused.length === 1 ? '' : 's'} (${formatBytes(total)}). Review with “Find unused images”.` });
         }
     } catch (error) {
-        issues.push({ level: 'warning', text: `Could not scan country image folder: ${error.message}` });
+        issues.push({ level: 'warning', text: `Could not scan image folder: ${error.message}` });
     }
     return dedupeIssues(issues);
 }
@@ -2627,42 +2759,135 @@ async function validateEverything() {
 
 async function runValidationDialog() {
     try {
-        els.validationSummary.innerHTML = '<p>Checking maps, hotspots, coordinates, province IDs and images…</p>';
+        els.validationDialogTitle.textContent = 'Issues';
+        els.validationSummary.innerHTML = '<p class="muted">Checking project issues…</p>';
         els.validationResults.innerHTML = '';
         els.validationDialog.showModal();
         const issues = await validateEverything();
-        renderValidationResults(issues);
+        renderValidationResults(issues, { scope: 'global' });
     } catch (error) {
         console.error(error);
         els.validationSummary.innerHTML = `<div class="notice notice-error">${escapeHtml(error.message)}</div>`;
     }
 }
 
+async function runCountryValidationDialog() {
+    const slug = state.activeSlug;
+    if (!slug) return;
+    try {
+        const entry = state.catalog[slug];
+        els.validationDialogTitle.textContent = `Validate ${entry.countryName || countryNameFromEntry(entry) || slug}`;
+        els.validationSummary.innerHTML = '<p class="muted">Checking this country…</p>';
+        els.validationResults.innerHTML = '';
+        els.validationDialog.showModal();
+        await ensureSvgLoaded(slug);
+        backfillGeographicCoordinates(slug);
+        renderMapPreview();
+        await nextFrame();
+        await hydrateImageStatsForCountry(slug);
+        const issues = (await validateCountryDeep(slug)).map(issue => ({ slug, ...issue }));
+        renderValidationResults(issues, { scope: 'country', slug });
+        renderCountryHealth();
+        renderCountries();
+        updatePreviewMarkers();
+    } catch (error) {
+        console.error(error);
+        els.validationSummary.innerHTML = `<div class="notice notice-error">${escapeHtml(error.message)}</div>`;
+    }
+}
 
-function renderValidationResults(issues) {
-    const errors = issues.filter(i => i.level === 'error').length;
-    const warnings = issues.filter(i => i.level === 'warning').length;
-    const mapCount = Object.keys(state.catalog).length;
-    const hotspotCount = Object.values(state.catalog).reduce((sum, entry) => sum + (entry.hotspots?.length || 0), 0);
-    const imageCount = Object.values(state.catalog).reduce((sum, entry) => sum + (entry.hotspots || []).reduce((n, h) => n + allManagedImages(h).length, 0), 0);
-    els.validationSummary.innerHTML = `
-        <div class="health-strip">
-            <span class="health-pill ${errors ? 'error' : 'ok'}">${errors} errors</span>
-            <span class="health-pill ${warnings ? 'warning' : 'ok'}">${warnings} warnings</span>
-            <span class="health-pill ok">${mapCount} maps</span>
-            <span class="health-pill ok">${hotspotCount} hotspots</span>
-            <span class="health-pill ok">${imageCount} image references</span>
-        </div>
-        <p class="muted">Deep checks include required fields, coordinate bounds/swaps, province geometry, near duplicates, image existence/size (preferred max 4 MB), duplicate references and unused country images.</p>`;
+function renderValidationResults(issues, { scope = 'global', slug = null } = {}) {
+    const relevant = issues.filter(issue => issue.level === 'error' || issue.level === 'warning');
+    const errors = relevant.filter(issue => issue.level === 'error').length;
+    const warnings = relevant.filter(issue => issue.level === 'warning').length;
+    const affectedCountries = new Set(relevant.map(issue => issue.slug).filter(Boolean)).size;
+    const summaryBits = [];
+    if (errors) summaryBits.push(`${errors} blocking`);
+    if (warnings) summaryBits.push(`${warnings} to review`);
+    const summaryText = summaryBits.length ? summaryBits.join(' · ') : 'No issues found';
+    const scopeText = scope === 'global' && affectedCountries
+        ? `${affectedCountries} countr${affectedCountries === 1 ? 'y' : 'ies'} affected`
+        : 'Current country';
+    els.validationSummary.innerHTML = `<div class="issues-summary ${errors ? 'error' : warnings ? 'warning' : 'ok'}"><i></i><div><strong>${escapeHtml(summaryText)}</strong><span>${escapeHtml(scopeText)}</span></div></div>`;
     els.validationResults.innerHTML = '';
-    if (!issues.length) {
-        els.validationResults.innerHTML = '<div class="validation-item ok">Everything passed validation.</div>';
+
+    if (scope === 'global') {
+        els.validationFilters.classList.remove('hidden');
+        const counts = { all: relevant.length, error: errors, warning: warnings };
+        els.validationFilters.querySelectorAll('[data-issue-filter]').forEach(button => {
+            const filter = button.dataset.issueFilter;
+            const label = filter === 'all' ? 'All' : filter === 'error' ? 'Blocking' : 'Review';
+            button.textContent = `${label} ${counts[filter]}`;
+            button.classList.toggle('active', filter === 'all');
+            button.onclick = () => applyValidationFilter(filter);
+        });
+    } else {
+        els.validationFilters.classList.add('hidden');
+    }
+
+    if (!relevant.length) {
+        appendValidationItem(els.validationResults, { level: 'ok', text: scope === 'global' ? 'Project is clear.' : 'This country is clear.' });
+        if (scope === 'global') setIssuesButtonState('ok', 0, 'No known issues');
+        else updateIssuesButton();
         return;
     }
-    issues.forEach(issue => appendValidationItem(els.validationResults, {
-        level: issue.level,
-        text: `${state.catalog[issue.slug]?.title || issue.slug}: ${issue.text}`,
-    }));
+
+    if (scope === 'global') {
+        const grouped = new Map();
+        relevant.forEach(issue => {
+            const key = issue.slug || 'project';
+            if (!grouped.has(key)) grouped.set(key, []);
+            grouped.get(key).push(issue);
+        });
+        grouped.forEach((groupIssues, groupSlug) => {
+            const section = document.createElement('section');
+            section.className = 'validation-country-group';
+            section.dataset.issueGroup = groupSlug;
+            const heading = document.createElement('button');
+            heading.type = 'button';
+            heading.className = 'validation-country-heading';
+            const entry = state.catalog[groupSlug];
+            const name = entry?.countryName || countryNameFromEntry(entry) || groupSlug;
+            const groupErrors = groupIssues.filter(issue => issue.level === 'error').length;
+            const groupWarnings = groupIssues.length - groupErrors;
+            heading.innerHTML = `<strong>${escapeHtml(name)}</strong><span>${groupErrors ? `${groupErrors} blocking` : ''}${groupErrors && groupWarnings ? ' · ' : ''}${groupWarnings ? `${groupWarnings} review` : ''}</span>`;
+            if (state.catalog[groupSlug]) heading.addEventListener('click', () => openIssueTarget({ slug: groupSlug }));
+            section.appendChild(heading);
+            groupIssues.forEach(issue => appendValidationItem(section, issue));
+            els.validationResults.appendChild(section);
+        });
+        setIssuesButtonState(errors ? 'error' : 'warning', errors + warnings, summaryText);
+    } else {
+        relevant.forEach(issue => appendValidationItem(els.validationResults, issue));
+        updateIssuesButton();
+    }
+}
+
+function applyValidationFilter(filter) {
+    const wanted = ['all', 'error', 'warning'].includes(filter) ? filter : 'all';
+    els.validationFilters.querySelectorAll('[data-issue-filter]').forEach(button => {
+        button.classList.toggle('active', button.dataset.issueFilter === wanted);
+    });
+    els.validationResults.querySelectorAll('.validation-item[data-level]').forEach(item => {
+        item.classList.toggle('hidden', wanted !== 'all' && item.dataset.level !== wanted);
+    });
+    els.validationResults.querySelectorAll('.validation-country-group').forEach(group => {
+        const visible = [...group.querySelectorAll('.validation-item[data-level]')].some(item => !item.classList.contains('hidden'));
+        group.classList.toggle('hidden', !visible);
+    });
+}
+
+async function openIssueTarget(issue) {
+    if (!issue?.slug || !state.catalog?.[issue.slug]) return;
+    els.validationDialog.close();
+    if (issue.slug !== state.activeSlug) {
+        await selectCountry(issue.slug);
+        if (state.activeSlug !== issue.slug) return;
+    }
+    if (Number.isInteger(issue.hotspotIndex) && state.catalog[issue.slug]?.hotspots?.[issue.hotspotIndex]) {
+        selectHotspot(issue.hotspotIndex);
+        els.hotspotEditor?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    }
 }
 
 function renderCountryHealth() {
@@ -2691,9 +2916,20 @@ function renderCountryHealth() {
 }
 
 function appendValidationItem(container, issue) {
-    const div = document.createElement('div');
-    div.className = `validation-item ${issue.level}`;
-    div.textContent = issue.text;
+    const div = document.createElement(issue.slug ? 'button' : 'div');
+    if (issue.slug) div.type = 'button';
+    div.className = `validation-item ${issue.level}${issue.slug ? ' clickable' : ''}`;
+    div.dataset.level = issue.level;
+    const icon = document.createElement('i');
+    icon.className = 'validation-item-dot';
+    icon.setAttribute('aria-hidden', 'true');
+    const text = document.createElement('span');
+    text.textContent = issue.text;
+    div.append(icon, text);
+    if (issue.slug) {
+        div.title = Number.isInteger(issue.hotspotIndex) ? 'Open this hotspot' : 'Open this country';
+        div.addEventListener('click', () => openIssueTarget(issue));
+    }
     container.appendChild(div);
 }
 
@@ -2702,7 +2938,14 @@ async function addImagesToSelected(files) {
     const h = activeHotspot();
     if (!h || !files.length) return;
     h.images = h.images || [];
-    h._assetFolder = h._assetFolder || inferAssetFolder(h, state.activeSlug) || generatedFacilityFolder(h);
+
+    // Always create new hotspot image files in the canonical province + facility folder.
+    // Existing references are left intact until explicitly removed, but they no longer
+    // dictate the folder for newly added files (which caused location_* vs bihar_* drift).
+    if (!h.provinceId && Number.isFinite(Number(h.x)) && Number.isFinite(Number(h.y))) {
+        h.provinceId = detectProvinceAtXY(h.x, h.y) || '';
+    }
+    h._assetFolder = generatedFacilityFolder(h, state.activeSlug);
     const baseDir = `images/${state.activeSlug}/${h._assetFolder}`;
     let added = 0;
     let oversized = 0;
@@ -2999,9 +3242,9 @@ async function renderImagesList() {
         actions.append(
             useToggle,
             reduceButton,
-            imageActionButton('↑', 'Move up', () => moveImage(index, -1), !used || index === 0),
-            imageActionButton('↓', 'Move down', () => moveImage(index, 1), !used || index === (h.images || []).length - 1),
-            imageActionButton('×', 'Remove file', () => removeImagePath(path), false),
+            imageActionButton('up', 'Move up', () => moveImage(index, -1), !used || index === 0),
+            imageActionButton('down', 'Move down', () => moveImage(index, 1), !used || index === (h.images || []).length - 1),
+            imageActionButton('remove', 'Remove file', () => removeImagePath(path), false),
         );
         row.append(img, text, actions);
         els.imageList.appendChild(row);
@@ -3026,14 +3269,25 @@ async function renderImagesList() {
     });
 }
 
-function imageActionButton(text, title, onClick, disabled) {
+function imageActionButton(icon, title, onClick, disabled) {
     const button = document.createElement('button');
     button.type = 'button';
-    button.textContent = text;
+    button.className = 'image-icon-button';
     button.title = title;
+    button.setAttribute('aria-label', title);
     button.disabled = disabled;
+    button.innerHTML = uiIconMarkup(icon);
     button.addEventListener('click', onClick);
     return button;
+}
+
+function uiIconMarkup(name) {
+    const paths = {
+        up: '<path d="M8 12.5v-9M4.5 7 8 3.5 11.5 7"/>',
+        down: '<path d="M8 3.5v9M4.5 9 8 12.5 11.5 9"/>',
+        remove: '<path d="M4 4l8 8M12 4 4 12"/>',
+    };
+    return `<svg class="ui-icon" viewBox="0 0 16 16" aria-hidden="true"><g fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round">${paths[name] || ''}</g></svg>`;
 }
 
 function toggleImageUsage(path, useOnMap) {
@@ -3222,15 +3476,19 @@ function serializeCatalog(catalog) {
 
 function markDirty() {
     state.dirty = true;
-    els.dirtyStatus.classList.remove('hidden');
     els.resetChanges.disabled = false;
     els.saveAll.disabled = false;
+    els.saveAll.classList.add('is-dirty');
+    els.reviewIndicator?.classList.add('warning');
+    els.saveAll.title = 'Unsaved changes — review before applying';
 }
 
 function clearDirtyIndicator() {
-    els.dirtyStatus.classList.add('hidden');
     els.resetChanges.disabled = true;
     els.saveAll.disabled = true;
+    els.saveAll.classList.remove('is-dirty');
+    els.reviewIndicator?.classList.remove('warning');
+    els.saveAll.title = 'No unsaved changes';
 }
 
 async function resetUnsavedChanges() {
@@ -3398,7 +3656,7 @@ async function removePath(path) {
 }
 
 function inferAssetFolder(hotspot, slug) {
-    const image = hotspot.images?.[0];
+    const image = allManagedImages(hotspot)[0];
     if (image) {
         const prefix = `images/${slug}/`;
         if (image.startsWith(prefix)) {
@@ -3406,13 +3664,26 @@ function inferAssetFolder(hotspot, slug) {
             if (rest.includes('/')) return rest.split('/')[0];
         }
     }
-    return generatedFacilityFolder(hotspot);
+    return generatedFacilityFolder(hotspot, slug);
 }
 
-function generatedFacilityFolder(hotspot) {
-    const city = slugifyPart(hotspot.city || 'location');
-    const facility = slugifyPart(hotspot.title || 'hotspot');
-    const joined = `${city}_${facility}`.replace(/_+/g, '_').replace(/^_|_$/g, '');
+function provinceFolderPart(hotspot, slug = state.activeSlug) {
+    const provinceId = String(hotspot?.provinceId || '').trim();
+    const meta = state.svgMeta.get(slug);
+    const region = meta?.regions?.find(item => item.id === provinceId);
+    const canonical = String(region?.name || '').trim();
+    if (canonical && canonical !== provinceId) return slugifyPart(canonical);
+    if (provinceId) {
+        const suffix = provinceId.split('-').filter(Boolean).pop() || provinceId;
+        return slugifyPart(suffix);
+    }
+    return 'region';
+}
+
+function generatedFacilityFolder(hotspot, slug = state.activeSlug) {
+    const province = provinceFolderPart(hotspot, slug);
+    const facility = slugifyPart(hotspot?.title || 'hotspot');
+    const joined = `${province}_${facility}`.replace(/_+/g, '_').replace(/^_|_$/g, '');
     return joined.slice(0, 90) || 'hotspot';
 }
 
@@ -3433,8 +3704,19 @@ function slugifyPart(value) {
         .replace(/^_+|_+$/g, '');
 }
 
+function normalizeCountrySlug(value) {
+    return String(value || '')
+        .normalize('NFKD')
+        .replace(/[̀-ͯ]/g, '')
+        .toLowerCase()
+        .replace(/[0-9]/g, '')
+        .replace(/[^a-z]+/g, '-')
+        .replace(/^-+|-+$/g, '')
+        .replace(/-{2,}/g, '-');
+}
+
 function normalizeSlug(value) {
-    return slugifyPart(value).replace(/_/g, '-');
+    return normalizeCountrySlug(value);
 }
 
 function normalizeHeader(value) {

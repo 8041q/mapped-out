@@ -54,7 +54,7 @@ Most updates follow the same process:
 3. Import the standard Excel file, add a hotspot manually, or edit an existing hotspot.
 4. Add or manage photos.
 5. Check the marker position in the Map editor.
-6. Select **Validate** and fix any problems.
+6. Select **Validate country** and fix any problems. Use **Issues** in the header when you want the project-wide view.
 7. Select **Review changes**.
 8. Select **Apply changes** when everything looks correct.
 9. Review the Git changes.
@@ -79,9 +79,9 @@ If you are unsure about an edit, you can discard the pending changes and reload 
 
 ---
 
-## Validation
+## Validation and Issues
 
-Before applying changes, use **Validate**.
+Use **Validate country** beside **Import Excel** while editing a country. The header **Issues** button is the project-wide tracker and groups blocking/review items by country.
 
 The manager uses three status levels:
 
@@ -91,7 +91,7 @@ The manager uses three status levels:
 | 🟡 **Yellow — Needs review** | The item can still be saved, but something should be checked. |
 | 🔴 **Red — Invalid** | A required value is missing or invalid. The problem must be fixed before changes can be applied. |
 
-Validation checks things such as coordinates, province/state matching, possible duplicates, nearby markers, image issues, and map consistency.
+Validation checks required fields, coordinates, province/state matching, possible duplicate facilities, image issues, and map consistency. Optional city/region text and physically close facilities are not treated as issues.
 
 ---
 
@@ -172,7 +172,7 @@ You can:
 - hover over hotspots to inspect them
 - drag hotspots to correct their location
 
-Moving a hotspot updates its latitude, longitude, SVG position, and detected province/state together.
+Moving a hotspot updates its latitude, longitude, SVG position, and detected province/state together. The editor overlays each province/state with its SVG region code so marker placement is easier to verify.
 
 **Reset selected** restores only the selected hotspot's geographic position and province/state to its editing baseline. Text and image changes are not removed.
 
@@ -186,7 +186,7 @@ A new country requires:
 
 ```text
 Country name
-Country slug (used for link/url)
+Country slug (lowercase letters and hyphens only; used for link/url)
 SVG map
 ```
 
@@ -296,7 +296,7 @@ Nearby hotspots are automatically grouped into cluster markers. Hotspots can als
 
 The Project Map Manager writes to the same `data/catalog.js` and `images/<country>/...` structure used by the public site.
 
-Excel `.xlsx` files are parsed locally by `start_manager.py`.
+Excel `.xlsx` files are parsed locally by `app.py`.
 
 ---
 

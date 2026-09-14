@@ -256,24 +256,29 @@ async function loadMap(slug) {
     console.log('Map loaded:', entry.title);
 }
 
-// assignColors: fill provinces with HSL gradient
+// assignColors: fill provinces from one exact anchor colour, varying only lightness.
 function assignColors(svg, states, colorConfig) {
     if (!states || states.empty()) return;
 
-    const { baseHue = 175, sat = '50%', minLight = 75, maxLight = 85 } = colorConfig;
-
-    // Small deterministic per-index jitter for visual variation
-    function computeJitter(i){
-        const hueJ = ((i * 97) % 21) - 10;
-        const satJ = ((i * 67) % 11) - 5;
-        const lightJ = ((i * 53) % 5) - 2;
-        return {hueJ, satJ, lightJ};
-    }
+    const { baseColor = '', baseHue = 175, sat = '50%', minLight = 75, maxLight = 85 } = colorConfig;
+    const parsedAnchor = baseColor ? d3.hsl(baseColor) : null;
+    const anchorHue = parsedAnchor && Number.isFinite(parsedAnchor.h) ? parsedAnchor.h : Number(baseHue);
+    const configuredSat = parseFloat(String(sat).replace('%',''));
+    const anchorSat = parsedAnchor && Number.isFinite(parsedAnchor.s)
+        ? parsedAnchor.s * 100
+        : (Number.isFinite(configuredSat) ? configuredSat : 50);
+    const resolvedHue = Number.isFinite(anchorHue) ? anchorHue : 175;
+    const resolvedSat = Math.max(0, Math.min(100, anchorSat));
+    const minLightNumber = Number(minLight);
+    const maxLightNumber = Number(maxLight);
+    const lowLight = Math.max(0, Math.min(100, Number.isFinite(minLightNumber) ? minLightNumber : 75));
+    const highLight = Math.max(0, Math.min(100, Number.isFinite(maxLightNumber) ? maxLightNumber : 85));
+    const minL = Math.min(lowLight, highLight);
+    const maxL = Math.max(lowLight, highLight);
 
     // Detect geo viewBox metadata if present (mapsvg:geoViewBox)
     const geoAttr = svg.attr('mapsvg:geoViewBox') || (svg.node() && svg.node().getAttribute('mapsvg:geoViewBox'));
     const vbArr = (svg.attr('viewBox') || svg.attr('viewbox') || '0 0 1 1').split(/\s+/).map(Number);
-    const vbW = vbArr[2] || +svg.attr('width') || 1;
     const vbH = vbArr[3] || +svg.attr('height') || 1;
     let geo = null;
     if (geoAttr) {
@@ -285,58 +290,26 @@ function assignColors(svg, states, colorConfig) {
     }
 
     const stateCount = states.size();
-
     states.each(function(d, i) {
         const el = d3.select(this);
+        let t = stateCount > 1 ? (i / (stateCount - 1)) : 0.5;
 
-        if (!geo) {
-            const t = stateCount > 1 ? (i / (stateCount - 1)) : 0;
-            const j = computeJitter(i);
-            const hue = baseHue + j.hueJ;
-            const satNum = parseFloat(String(sat).replace('%','')) || 50;
-            const satVal = Math.max(20, Math.min(80, Math.round(satNum + j.satJ))) + '%';
-            const light = Math.round(minLight + (maxLight - minLight) * t + j.lightJ);
-            const fill = `hsl(${hue}, ${satVal}, ${light}%)`;
-            el.attr('data-base-fill', fill);
-            el.attr('fill', fill);
-            if (!el.attr('stroke')) el.attr('stroke', '#fff');
-            if (!el.attr('stroke-width')) el.attr('stroke-width', '0.4');
-            return;
+        if (geo) {
+            try {
+                const bb = this.getBBox();
+                const cy = bb.y + bb.height / 2;
+                const latSpan = geo.latSpan || 1;
+                const lat = geo.maxLat - (cy * (latSpan / vbH));
+                t = (lat - geo.minLat) / latSpan;
+                t = Math.pow(Math.max(0, Math.min(1, t)), 1.35);
+            } catch (e) {
+                // Keep the deterministic index fallback above.
+            }
         }
 
-        // If geo is present, compute centroid-based latitude for gradient
-        let cx = 0, cy = 0;
-        try {
-            const bb = this.getBBox();
-            cx = bb.x + bb.width / 2;
-            cy = bb.y + bb.height / 2;
-        } catch (e) {
-            // Fallback to index-based gradient with jitter
-            const t = stateCount > 1 ? (i / (stateCount - 1)) : 0;
-            const j = computeJitter(i);
-            const hue = baseHue + j.hueJ;
-            const satNum = parseFloat(String(sat).replace('%','')) || 50;
-            const satVal = Math.max(20, Math.min(80, Math.round(satNum + j.satJ))) + '%';
-            const light = Math.round(minLight + (maxLight - minLight) * t + j.lightJ);
-            const fill = `hsl(${hue}, ${satVal}, ${light}%)`;
-            el.attr('data-base-fill', fill);
-            el.attr('fill', fill);
-            if (!el.attr('stroke')) el.attr('stroke', '#fff');
-            if (!el.attr('stroke-width')) el.attr('stroke-width', '0.4');
-            return;
-        }
-
-        const latSpan = geo.latSpan || 1;
-        const lat = geo.maxLat - (cy * (latSpan / vbH));
-        let score = (lat - geo.minLat) / (latSpan || 1);
-        score = Math.max(0, Math.min(1, score));
-        score = Math.pow(score, 1.35);
-
-        const jitter = ((i * 37) % 9) - 4;
-        const hue = baseHue + jitter;
-
-        const light = Math.round(maxLight - score * (maxLight - minLight));
-        const fill = `hsl(${hue}, ${sat}, ${light}%)`;
+        const light = maxL - t * (maxL - minL);
+        const exactColour = /^#[0-9a-f]{6}$/i.test(String(baseColor || '')) && Math.abs(maxL - minL) < 0.0001;
+        const fill = exactColour ? String(baseColor).toLowerCase() : `hsl(${resolvedHue}, ${resolvedSat}%, ${light}%)`;
         el.attr('data-base-fill', fill);
         el.attr('fill', fill);
         if (!el.attr('stroke')) el.attr('stroke', '#fff');
@@ -367,14 +340,10 @@ function initProvinceInteractions(states, tooltip, popup, signal) {
             // Darken fill on hover using stored base color
             const baseFill = el.attr('data-base-fill');
             if (baseFill) {
-                // Parse HSL and darken the lightness
-                const hslMatch = baseFill.match(/hsl\((\d+),\s*([\d.]+)%,\s*([\d.]+)%\)/);
-                if (hslMatch) {
-                    const h = hslMatch[1];
-                    const s = hslMatch[2];
-                    const l = parseFloat(hslMatch[3]);
-                    const darkerL = Math.max(l - 10, 0); // Darken by 10%
-                    el.attr('fill', `hsl(${h}, ${s}%, ${darkerL}%)`);
+                const colour = d3.hsl(baseFill);
+                if (colour && Number.isFinite(colour.l)) {
+                    colour.l = Math.max(0, colour.l - 0.10);
+                    el.attr('fill', colour.formatHsl());
                 }
             }
 

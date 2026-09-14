@@ -4,7 +4,7 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Project Map Manager</title>
-    <link rel="stylesheet" href="manager.css">
+    <link rel="stylesheet" href="manager.css?v=20260914-2">
 </head>
 <body>
     <header class="app-header">
@@ -15,8 +15,6 @@
             </div>
         </div>
         <div class="header-actions">
-            <span id="repo-status" class="repo-status"><i class="repo-dot"></i><span>Detecting repository…</span></span>
-            <span id="dirty-status" class="dirty-status hidden"><i></i>Unsaved changes</span>
             <div class="font-size-control" role="group" aria-label="Text size">
                 <button type="button" data-font-size="small" aria-pressed="false">Small</button>
                 <button type="button" data-font-size="medium" aria-pressed="true">Medium</button>
@@ -24,13 +22,17 @@
             </div>
             <button id="help-button" class="button button-quiet">Help</button>
             <button id="reset-changes" class="button button-quiet" disabled>Discard changes</button>
-            <button id="validate-all" class="button button-secondary" disabled>Validate</button>
-            <button id="save-all" class="button button-primary" disabled>Review changes</button>
+            <button id="validate-all" class="button button-secondary issues-button" disabled aria-label="Project issues">
+                <i id="issues-indicator" class="status-dot neutral" aria-hidden="true"></i><span>Issues</span><span id="issues-count" class="status-count">—</span>
+            </button>
+            <button id="save-all" class="button button-primary review-button" disabled>
+                <i id="review-indicator" class="status-dot" aria-hidden="true"></i><span>Review changes</span>
+            </button>
         </div>
     </header>
 
     <div id="unsupported" class="notice notice-error hidden">
-        The local manager server could not detect the repository. Run <code>start_manager.py</code> from the repository root.
+        The local manager server could not detect the repository. Run <code>launcher.command</code>/<code>launcher.bat</code> (or <code>python app.py</code>) from the repository root.
     </div>
 
     <main class="app-shell">
@@ -59,9 +61,10 @@
                     </div>
                     <div class="country-actions">
                         <button id="import-excel" class="button button-secondary">Import Excel</button>
+                        <button id="validate-country" class="button button-secondary">Validate country</button>
                         <button id="add-hotspot" class="button button-primary button-with-icon"><svg class="button-icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 5v14M5 12h14" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"/></svg>Add hotspot</button>
                         <details class="action-menu" id="country-tools-menu">
-                            <summary class="button button-quiet">More <span aria-hidden="true">⌄</span></summary>
+                            <summary class="button button-quiet">More <svg class="ui-icon action-menu-chevron" viewBox="0 0 16 16" aria-hidden="true"><path d="m3.5 6 4.5 4 4.5-4" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/></svg></summary>
                             <div class="action-menu-popover">
                                 <div class="action-menu-label">Map</div>
                                 <button id="country-settings" type="button">Map settings</button>
@@ -200,7 +203,10 @@
                                 <h3>Map editor</h3>
                                 <span class="muted">Use + / − to zoom · drag the map to pan · drag a hotspot to move it.</span>
                             </div>
-                            <button id="reset-position" class="button button-secondary" disabled>Reset selected</button>
+                            <div class="map-editor-actions">
+                                <label class="map-code-toggle" title="Show province/state codes over the editor map"><input id="map-label-toggle" type="checkbox" checked><span>Region codes</span></label>
+                                <button id="reset-position" class="button button-secondary" disabled>Reset selected</button>
+                            </div>
                         </div>
                         <div id="map-stage" class="map-stage">
                             <div id="map-preview" class="map-preview">
@@ -208,7 +214,7 @@
                             </div>
                             <div class="map-navigation" aria-label="Map navigation controls">
                                 <button id="map-zoom-in" type="button" class="map-nav-button" title="Zoom in" aria-label="Zoom in"><svg class="button-icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 5v14M5 12h14" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"/></svg></button>
-                                <button id="map-zoom-out" type="button" class="map-nav-button" title="Zoom out" aria-label="Zoom out">−</button>
+                                <button id="map-zoom-out" type="button" class="map-nav-button" title="Zoom out" aria-label="Zoom out"><svg class="button-icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M5 12h14" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"/></svg></button>
                                 <button id="map-zoom-reset" type="button" class="map-nav-button map-nav-fit" title="Fit map" aria-label="Fit map">Fit</button>
                             </div>
                             <div id="hotspot-hover-card" class="hotspot-hover-card hidden" role="tooltip"></div>
@@ -231,7 +237,7 @@
         <form method="dialog" id="country-form">
             <div class="dialog-heading">
                 <h2 id="country-dialog-title">Add country</h2>
-                <button type="button" class="icon-button" data-close-dialog="country-dialog" aria-label="Close">×</button>
+                <button type="button" class="icon-button" data-close-dialog="country-dialog" aria-label="Close"><svg class="ui-icon" viewBox="0 0 16 16" aria-hidden="true"><path d="M4 4l8 8M12 4 4 12" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/></svg></button>
             </div>
             <div class="dialog-body">
                 <label class="field">
@@ -240,8 +246,8 @@
                 </label>
                 <label class="field" id="slug-field-wrap">
                     <span>Country slug <b class="required-mark">*</b></span>
-                    <input id="map-slug" type="text" placeholder="e.g. portugal" required>
-                    <small>Used in the URL and <code>images/&lt;slug&gt;/</code>.</small>
+                    <input id="map-slug" type="text" placeholder="e.g. portugal" pattern="[a-z]+(?:-[a-z]+)*" autocapitalize="none" autocomplete="off" spellcheck="false" required>
+                    <small>Lowercase letters and hyphens only. Used in the URL and <code>images/&lt;slug&gt;/</code>.</small>
                 </label>
                 <label class="field">
                     <span>Public map title</span>
@@ -265,7 +271,7 @@
                     <div class="color-config-heading">
                         <div>
                             <strong>Map colour settings</strong>
-                            <small>Pick visually or fine-tune the existing HSL values.</small>
+                            <small>The swatch is the exact selected colour; province shades stay in the same colour family.</small>
                         </div>
                         <label class="color-wheel-control" title="Open colour picker">
                             <span>Colour picker</span>
@@ -296,11 +302,16 @@
 
     <dialog id="validation-dialog" class="dialog dialog-wide">
         <div class="dialog-heading">
-            <h2>Validation</h2>
-            <button class="icon-button" data-close-dialog="validation-dialog" aria-label="Close">×</button>
+            <h2 id="validation-dialog-title">Issues</h2>
+            <button class="icon-button" data-close-dialog="validation-dialog" aria-label="Close"><svg class="ui-icon" viewBox="0 0 16 16" aria-hidden="true"><path d="M4 4l8 8M12 4 4 12" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/></svg></button>
         </div>
         <div class="dialog-body">
             <div id="validation-summary"></div>
+            <div id="validation-filters" class="issue-filters hidden" role="group" aria-label="Filter project issues">
+                <button type="button" class="active" data-issue-filter="all">All</button>
+                <button type="button" data-issue-filter="error">Blocking</button>
+                <button type="button" data-issue-filter="warning">Review</button>
+            </div>
             <div id="validation-results" class="validation-results"></div>
         </div>
         <div class="dialog-actions">
@@ -311,7 +322,7 @@
     <dialog id="save-dialog" class="dialog dialog-wide">
         <div class="dialog-heading">
             <h2>Review changes</h2>
-            <button class="icon-button" data-close-dialog="save-dialog" aria-label="Close">×</button>
+            <button class="icon-button" data-close-dialog="save-dialog" aria-label="Close"><svg class="ui-icon" viewBox="0 0 16 16" aria-hidden="true"><path d="M4 4l8 8M12 4 4 12" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/></svg></button>
         </div>
         <div class="dialog-body">
             <div id="save-validation-note"></div>
@@ -326,7 +337,7 @@
     <dialog id="unsaved-dialog" class="dialog">
         <div class="dialog-heading">
             <h2>Unsaved changes</h2>
-            <button class="icon-button" data-close-dialog="unsaved-dialog" aria-label="Close">×</button>
+            <button class="icon-button" data-close-dialog="unsaved-dialog" aria-label="Close"><svg class="ui-icon" viewBox="0 0 16 16" aria-hidden="true"><path d="M4 4l8 8M12 4 4 12" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/></svg></button>
         </div>
         <div class="dialog-body">
             <p>You have changes that have not been written to the repository yet.</p>
@@ -342,7 +353,7 @@
     <dialog id="delete-dialog" class="dialog">
         <div class="dialog-heading">
             <h2>Delete hotspot</h2>
-            <button class="icon-button" data-close-dialog="delete-dialog" aria-label="Close">×</button>
+            <button class="icon-button" data-close-dialog="delete-dialog" aria-label="Close"><svg class="ui-icon" viewBox="0 0 16 16" aria-hidden="true"><path d="M4 4l8 8M12 4 4 12" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/></svg></button>
         </div>
         <div class="dialog-body">
             <p id="delete-message"></p>
@@ -358,7 +369,7 @@
     <dialog id="import-dialog" class="dialog">
         <div class="dialog-heading">
             <h2>Import Excel</h2>
-            <button class="icon-button" data-close-dialog="import-dialog" aria-label="Close">×</button>
+            <button class="icon-button" data-close-dialog="import-dialog" aria-label="Close"><svg class="ui-icon" viewBox="0 0 16 16" aria-hidden="true"><path d="M4 4l8 8M12 4 4 12" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/></svg></button>
         </div>
         <div class="dialog-body">
             <div id="import-summary"></div>
@@ -374,7 +385,7 @@
     <dialog id="image-reduce-dialog" class="dialog">
         <div class="dialog-heading">
             <h2>Reduce Image Size</h2>
-            <button class="icon-button" data-close-dialog="image-reduce-dialog" aria-label="Close">×</button>
+            <button class="icon-button" data-close-dialog="image-reduce-dialog" aria-label="Close"><svg class="ui-icon" viewBox="0 0 16 16" aria-hidden="true"><path d="M4 4l8 8M12 4 4 12" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/></svg></button>
         </div>
         <div class="dialog-body">
             <div id="image-reduce-summary"></div>
@@ -402,20 +413,20 @@
                 <h2>How to use the map manager</h2>
                 <p>Most updates follow the same four-step workflow.</p>
             </div>
-            <button class="icon-button" data-close-dialog="help-dialog" aria-label="Close">×</button>
+            <button class="icon-button" data-close-dialog="help-dialog" aria-label="Close"><svg class="ui-icon" viewBox="0 0 16 16" aria-hidden="true"><path d="M4 4l8 8M12 4 4 12" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/></svg></button>
         </div>
         <div class="dialog-body help-body">
             <div class="workflow-steps">
                 <div class="workflow-step"><span>1</span><div><strong>Choose a country</strong><p>Select an existing map on the left, or add a new country with its SVG.</p></div></div>
                 <div class="workflow-step"><span>2</span><div><strong>Add or update hotspots</strong><p>Import the standard Excel file or add a hotspot manually. Review anything shown in yellow or red.</p></div></div>
                 <div class="workflow-step"><span>3</span><div><strong>Add photos and check the map</strong><p>Drop photos onto each hotspot. Use the map editor to confirm marker positions and provinces.</p></div></div>
-                <div class="workflow-step"><span>4</span><div><strong>Validate, review, then apply</strong><p>Run validation, review the file changes, then choose Apply changes. Commit and push with Git as usual.</p></div></div>
+                <div class="workflow-step"><span>4</span><div><strong>Check issues, review, then apply</strong><p>Validate the current country as you work, use Issues for the project-wide view, then review and apply the file changes.</p></div></div>
             </div>
             <div class="help-grid">
                 <section><h3>Status colours</h3><p><i class="legend-dot ok"></i><strong>Green</strong> - ready.</p><p><i class="legend-dot warning"></i><strong>Yellow</strong> - usable, but worth checking.</p><p><i class="legend-dot error"></i><strong>Red</strong> - fix before applying changes.</p></section>
                 <section><h3>Images</h3><p>Images are never compressed automatically. Files over 4 MB are flagged so you can reduce them individually if useful.</p><p>Use the Used / Unused switch to keep a file in the project without showing it on the public map. Reduced images stay temporary until you apply the final changes.</p></section>
                 <section><h3>Excel imports</h3><p>The manager ignores the Image column and everything after it. Existing matches are merged and their photos are kept.</p><p>An import only stops after five consecutive empty rows.</p></section>
-                <section><h3>Map editor</h3><p>Use + / − to zoom. Drag background: pan. Drag a marker: move it. Hover a marker: identify the facility and coordinates.</p></section>
+                <section><h3>Map editor</h3><p>Use + / − to zoom. Region codes identify province/state geometry. Drag the background to pan or a marker to move it.</p></section>
             </div>
             <p class="help-footnote">The full user guide is included at <code>manager/USER_GUIDE.md</code>.</p>
         </div>
@@ -424,6 +435,6 @@
 
     <div id="toast" class="toast" role="status" aria-live="polite"></div>
 
-    <script src="manager.js"></script>
+    <script src="manager.js?v=20260914-2"></script>
 </body>
 </html>

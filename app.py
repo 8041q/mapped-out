@@ -182,6 +182,20 @@ def parse_xlsx_rows(data: bytes, *, max_rows: int = 10000, max_columns: int = 25
 class ManagerRequestHandler(SimpleHTTPRequestHandler):
     server_version = "MapManagerLocal/3.0"
 
+    def end_headers(self) -> None:
+        parsed = urlparse(self.path)
+        # The manager is a local editing tool. Never let the browser keep stale UI or
+        # catalog/runtime files between launches; otherwise a freshly extracted build can
+        # look identical to an older copy until the cache is manually cleared.
+        if not parsed.path.startswith(API_PREFIX) and (
+            parsed.path.startswith("/manager/")
+            or parsed.path in {"/data/catalog.js", "/data/main.js", "/data/styles.css", "/index.html", "/"}
+        ):
+            self.send_header("Cache-Control", "no-store, max-age=0")
+            self.send_header("Pragma", "no-cache")
+            self.send_header("Expires", "0")
+        super().end_headers()
+
     def _send_json(self, payload: dict, status: int = 200) -> None:
         data = json.dumps(payload).encode("utf-8")
         self.send_response(status)
@@ -419,7 +433,7 @@ def main() -> None:
 
     print(f"Repository: {ROOT}")
     if not repository_is_valid():
-        print("WARNING: expected data/catalog.js and images/ beside start_manager.py.")
+        print("WARNING: expected data/catalog.js and images/ beside app.py.")
     print(f"Map Content Manager: {url}")
     print("Press Ctrl+C to stop the local server.")
     try:

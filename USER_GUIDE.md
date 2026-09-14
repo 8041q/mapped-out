@@ -9,7 +9,7 @@ This tool lets you update the interactive project maps without editing JavaScrip
 3. Import the standard Excel file, add a hotspot manually, or edit an existing hotspot.
 4. Add photos separately by dragging them onto the hotspot.
 5. Check the marker on the Map editor and fix its position if necessary.
-6. Choose **Validate**. Fix red problems and review anything shown in yellow.
+6. Choose **Validate country**. Fix blocking problems and review anything shown in yellow. Use **Issues** for the project-wide view.
 7. Choose **Review changes**, read the summary, then choose **Apply changes**.
 8. Review the Git changes, commit, and push as you normally do. The existing GitHub Action handles the website update.
 
@@ -48,7 +48,7 @@ You can always override the province/state manually if the automatic result is w
 
 ## Using the Map editor
 
-Use the `+` and `−` buttons in the corner to zoom and **Fit** to return to the full country. Drag the map background to pan. The mouse wheel keeps its normal page-scrolling behavior and does not zoom the map.
+Use the `+` and `−` buttons in the corner to zoom and **Fit** to return to the full country. Drag the map background to pan. The mouse wheel keeps its normal page-scrolling behavior and does not zoom the map. **Region codes** is on by default and overlays the SVG province/state codes as editor-only watermarks; switch it off whenever you want a clean map view.
 
 Hover a hotspot to see its facility name, city/region when available, and current coordinates. Drag a hotspot to correct its position. The latitude, longitude, SVG position, and detected province are updated together.
 
@@ -56,7 +56,7 @@ If you move a hotspot and want to undo only its map position, use **Reset select
 
 ## Adding and managing photos
 
-Select a hotspot and drag photos into the Images area, or choose **Add images**. The project folder and image paths are created automatically using the existing repository structure.
+Select a hotspot and drag photos into the Images area, or choose **Add images**. New hotspot folders are generated consistently from the detected province/state name followed by the facility name. Existing folders that already contain referenced images are preserved so paths are not broken.
 
 A preferred maximum of **4 MB per image** is used as a warning threshold. Images are never reduced automatically. Choose **Reduce** on an individual image only when you want to optimize that file.
 
@@ -68,7 +68,7 @@ PNG files can try a lossless, pixel-preserving reduction. JPEG, WebP, and AVIF u
 
 ## Adding a new country
 
-Choose the `+` button beside Countries. Country name, country slug, and the country SVG are required. The public title and description can be edited but are optional.
+Choose the `+` button beside Countries. Country name, country slug, and the country SVG are required. Slugs are normalized live to lowercase letters and hyphens; uppercase characters are converted immediately and numbers are removed. The public title and description can be edited but are optional.
 
 The manager reads the SVG geographic bounds, map size, and province/state IDs automatically. If the SVG provides width/height instead of a `viewBox`, the manager creates the equivalent preview view internally without changing the original SVG.
 
@@ -78,17 +78,19 @@ You do not need to import hotspots at the same time. A country can be created wi
 
 Open **More → Replace country SVG**. The replacement SVG is staged as an unsaved change. Existing hotspots are regenerated from their stored latitude/longitude and checked against the province IDs in the new SVG.
 
-Run **Validate** after replacing an SVG. This catches province IDs that no longer exist and markers that now fall inside a different province.
+Run **Validate country** after replacing an SVG. This catches province IDs that no longer exist and markers that now fall inside a different province.
 
-## Validation
+## Validation and Issues
 
-Validation checks the required fields as well as coordinate bounds, possible latitude/longitude swaps, province geometry, possible duplicate facilities, very close markers, missing or oversized images, duplicate image references/content, truly unlinked image files, and other map consistency issues. Photos intentionally switched to **Unused** remain managed and are not treated as orphaned files.
+Use **Validate country** beside **Import Excel** for the country you are editing. Use **Issues** in the header for a project-wide view grouped by country. The Issues button itself carries the current green/yellow/red status instead of showing a separate repository-status indicator.
 
-Yellow warnings are informational/review items and do not block saving. Red errors do.
+Validation checks required fields, coordinate bounds and likely latitude/longitude swaps, province geometry/mismatches, possible duplicate facilities, missing or oversized active images, duplicate image references/content, truly unlinked image files, and map consistency. Optional city/region or description fields do not create issues, and facilities are not warned simply because their real-world coordinates are physically close. Photos intentionally switched to **Unused** remain managed and are not treated as orphaned files.
+
+Yellow warnings are review items and do not block saving. Red errors do.
 
 ## Unsaved changes and recovery
 
-When there are pending changes, an **Unsaved changes** indicator appears in the header. Switching countries asks whether you want to stay, discard the pending changes, or review them first.
+When there are pending changes, the fixed-width **Review changes** control gains an amber status dot; no extra header text is inserted, so the toolbar does not shift. Switching countries asks whether you want to stay, discard the pending changes, or review them first.
 
 **Discard changes** reloads the current repository files and removes temporary staged files. Closing/reloading the browser also warns when there are unsaved changes.
 
