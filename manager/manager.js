@@ -26,31 +26,9 @@ const IMAGE_HIGH_QUALITY_MIN = 0.78;
 const IMAGE_MIN_LONG_EDGE = 1600;
 const OVERSIZED_IMAGE_BYTES = PREFERRED_MAX_IMAGE_BYTES;
 
-// Human-facing map abbreviations are intentionally separate from raw SVG region IDs.
-// Uploaded SVGs can provide data-code/data-abbr/data-label on each region. When they do
-// not, alphabetic suffixes such as PH-NEC are safe to use. Thailand's ISO subdivision
-// IDs are numeric, so the current Thailand map uses a curated short-code table instead
-// of displaying 10/14/etc. as if those were alphabetic province abbreviations.
-const REGION_CODE_OVERRIDES = {
-    thailand: {
-        'TH-10': 'BKK', 'TH-11': 'SPK', 'TH-12': 'NBI', 'TH-13': 'PTE', 'TH-14': 'AYA',
-        'TH-15': 'ATG', 'TH-16': 'LRI', 'TH-17': 'SBR', 'TH-18': 'CNT', 'TH-19': 'SRB',
-        'TH-20': 'CBI', 'TH-21': 'RYG', 'TH-22': 'CTI', 'TH-23': 'TRT', 'TH-24': 'CCO',
-        'TH-25': 'PRI', 'TH-26': 'NYK', 'TH-27': 'SKW', 'TH-30': 'NMA', 'TH-31': 'BRM',
-        'TH-32': 'SRN', 'TH-33': 'SSK', 'TH-34': 'UBN', 'TH-35': 'YST', 'TH-36': 'CPM',
-        'TH-37': 'ACR', 'TH-38': 'BKN', 'TH-39': 'NBP', 'TH-40': 'KKN', 'TH-41': 'UDN',
-        'TH-42': 'LEI', 'TH-43': 'NKI', 'TH-44': 'MKM', 'TH-45': 'RET', 'TH-46': 'KSN',
-        'TH-47': 'SNK', 'TH-48': 'NPM', 'TH-49': 'MDH', 'TH-50': 'CMI', 'TH-51': 'LPN',
-        'TH-52': 'LPG', 'TH-53': 'UTD', 'TH-54': 'PRE', 'TH-55': 'NAN', 'TH-56': 'PYO',
-        'TH-57': 'CRI', 'TH-58': 'MSN', 'TH-60': 'NSN', 'TH-61': 'UTI', 'TH-62': 'KPT',
-        'TH-63': 'TAK', 'TH-64': 'STI', 'TH-65': 'PLK', 'TH-66': 'PCT', 'TH-67': 'PNB',
-        'TH-70': 'RBR', 'TH-71': 'KRI', 'TH-72': 'SPB', 'TH-73': 'NPT', 'TH-74': 'SKN',
-        'TH-75': 'SKM', 'TH-76': 'PBI', 'TH-77': 'PKN', 'TH-80': 'NRT', 'TH-81': 'KBI',
-        'TH-82': 'PNA', 'TH-83': 'PKT', 'TH-84': 'SRT', 'TH-85': 'RNG', 'TH-86': 'CPN',
-        'TH-90': 'SKA', 'TH-91': 'STN', 'TH-92': 'TRG', 'TH-93': 'PLG', 'TH-94': 'PTN',
-        'TH-95': 'YLA', 'TH-96': 'NWT', 'TH-S': 'PTY',
-    },
-};
+// Human-facing region abbreviations live in region-metadata.js rather than application
+// logic. SVGs can override them per region with data-code/data-abbr/data-label.
+const REGION_CODE_OVERRIDES = window.MAPPED_OUT_REGION_CODES || {};
 
 const state = {
     repositoryReady: false,
@@ -78,6 +56,8 @@ const state = {
     imageOptimizationMeta: new Map(),
     imageReducePath: null,
     fileStats: new Map(),
+    deepValidationIssues: new Map(),
+    metadataHydrationComplete: false,
 };
 
 const els = {};
@@ -110,7 +90,7 @@ function cacheElements() {
         'country-dialog', 'country-form', 'country-dialog-title', 'slug-field-wrap', 'map-country-name', 'map-slug',
         'map-title', 'map-description', 'map-logo', 'map-logo-alt', 'map-hue', 'map-sat',
         'map-min-light', 'map-max-light', 'map-color-picker', 'map-color-preview', 'new-svg-wrap', 'map-svg', 'country-form-message',
-        'validation-dialog', 'validation-dialog-title', 'validation-summary', 'validation-filters', 'validation-results', 'save-dialog',
+        'validation-dialog', 'validation-dialog-title', 'validation-summary', 'validation-filters', 'validation-scroll-region', 'validation-results', 'save-dialog',
         'save-validation-note', 'change-summary', 'confirm-save', 'unsaved-dialog', 'unsaved-stay', 'unsaved-discard', 'unsaved-save', 'delete-dialog', 'delete-message',
         'confirm-delete', 'import-dialog', 'import-summary', 'import-plan', 'import-warnings',
         'confirm-import', 'image-reduce-dialog', 'image-reduce-summary', 'lossless-choice', 'image-reduce-message', 'confirm-image-reduce', 'toast'
@@ -137,12 +117,19 @@ function setIssuesButtonState(level, count, title) {
 
 function updateIssuesButton() {
     if (!state.repositoryReady || !state.catalog) return;
+    if (!state.metadataHydrationComplete) {
+        setIssuesButtonState('neutral', '…', 'Checking project issues…');
+        return;
+    }
     let errors = 0;
     let warnings = 0;
     Object.keys(state.catalog).forEach(slug => {
         // Count validation messages, not affected hotspots. While a country has not
         // been opened yet, ignore the transient “SVG has not been loaded” state.
-        const issues = validateCountry(slug).filter(issue => issue.text !== 'SVG has not been loaded.');
+        const issues = dedupeIssues([
+            ...validateCountry(slug).filter(issue => issue.text !== 'SVG has not been loaded.'),
+            ...(state.deepValidationIssues.get(slug) || []),
+        ]);
         errors += issues.filter(issue => issue.level === 'error').length;
         warnings += issues.filter(issue => issue.level === 'warning').length;
     });
@@ -481,6 +468,8 @@ async function initializeRepository() {
         state.selectedHotspots.clear();
         state.imageOptimizationMeta.clear();
         state.fileStats.clear();
+        state.deepValidationIssues.clear();
+        state.metadataHydrationComplete = false;
         state.dirty = false;
         state.pendingCountrySwitch = null;
         state.previewBaseView = null;
@@ -581,6 +570,8 @@ async function hydrateCountryMetadataInBackground() {
         }
         renderCountries();
     }
+    state.metadataHydrationComplete = true;
+    renderCountries();
 }
 
 function renderCountries() {
@@ -806,27 +797,44 @@ function renderHotspotList() {
 function getCountryStats(slug) {
     const entry = state.catalog?.[slug];
     if (!entry) return { total: 0, images: 0, errors: 0, warnings: 0, valid: 0, level: 'error' };
-    let errors = 0;
-    let warnings = 0;
-    let valid = 0;
-    entry.hotspots.forEach((h, index) => {
-        // Legacy catalog entries can legitimately have x/y but no lat/lon until their SVG is
-        // loaded once. Do not paint an unopened country red just because migration has not run yet.
-        const legacyPending = !Number.isFinite(Number(h.lat)) && !Number.isFinite(Number(h.lon)) &&
-            Number.isFinite(Number(h.x)) && Number.isFinite(Number(h.y)) && !state.svgMeta.has(slug);
-        if (legacyPending) {
-            const blocking = !String(h.title || '').trim() || !String(h.provinceId || '').trim();
-            if (blocking) errors++;
-            else warnings++;
-            return;
-        }
-        const status = hotspotValidationStatus(slug, h, index);
-        if (status.level === 'error') errors++;
-        else if (status.level === 'warning') warnings++;
-        else valid++;
+
+    // Older catalog rows can have SVG x/y but no lat/lon until their SVG has loaded once. Keep
+    // that short startup migration state neutral instead of briefly painting every country red.
+    if (!state.svgMeta.has(slug)) {
+        let errors = 0;
+        let warnings = 0;
+        let valid = 0;
+        entry.hotspots.forEach(h => {
+            const legacyPending = optionalFiniteNumber(h.lat) == null && optionalFiniteNumber(h.lon) == null &&
+                optionalFiniteNumber(h.x) != null && optionalFiniteNumber(h.y) != null;
+            if (legacyPending) {
+                if (!String(h.title || '').trim() || !String(h.provinceId || '').trim()) errors++;
+                else warnings++;
+                return;
+            }
+            const status = hotspotValidationStatus(slug, h, null);
+            if (status.level === 'error') errors++;
+            else if (status.level === 'warning') warnings++;
+            else valid++;
+        });
+        if (!String(entry.countryName || '').trim() || !entry.svgUrl) errors++;
+        const images = entry.hotspots.reduce((sum, h) => sum + allManagedImages(h).length, 0);
+        return { total: entry.hotspots.length, images, errors, warnings, valid, level: errors ? 'error' : warnings ? 'warning' : 'ok' };
+    }
+
+    // Country health, hotspot dots, editor status and Issues all read from the same validation
+    // functions. Deep filesystem checks are cached after a validation pass and folded back into
+    // the health state until the country is edited again.
+    const shallowIssues = validateCountry(slug).filter(issue => {
+        return !(issue.text === 'SVG has not been loaded.' && entry.svgUrl && !state.svgMeta.has(slug));
     });
-    if (!String(entry.countryName || '').trim() || !entry.svgUrl) errors++;
+    const deepIssues = state.deepValidationIssues.get(slug) || [];
+    const issues = dedupeIssues([...shallowIssues, ...deepIssues]);
+    const errors = issues.filter(issue => issue.level === 'error').length;
+    const warnings = issues.filter(issue => issue.level === 'warning').length;
+    const valid = entry.hotspots.filter((h, index) => currentHotspotIssues(slug, h, index).length === 0).length;
     const images = entry.hotspots.reduce((sum, h) => sum + allManagedImages(h).length, 0);
+
     return {
         total: entry.hotspots.length,
         images,
@@ -1047,7 +1055,7 @@ function renderEditor() {
 
 function refreshHotspotReviewState(h = activeHotspot()) {
     if (!h || !els.hotspotStatusBadge) return;
-    const issues = validateHotspot(state.activeSlug, h, { index: state.activeHotspotIndex });
+    const issues = currentHotspotIssues(state.activeSlug, h, state.activeHotspotIndex);
     const actionable = issues.filter(issue => issue.level === 'error' || issue.level === 'warning');
     const status = hotspotValidationStatus(state.activeSlug, h, state.activeHotspotIndex);
     els.hotspotStatusBadge.textContent = status.level === 'ok' ? status.label : `${status.label} · ${actionable.length}`;
@@ -1501,42 +1509,40 @@ function renderRegionLabels(svg = previewSvg()) {
     else svg.appendChild(layer);
 }
 
+function resolveRegionCountryCode(region, slug = state.activeSlug) {
+    const id = String(region?.id || region || '').trim().toUpperCase();
+    if (!id) return { label: '', resolved: false, source: 'missing' };
+
+    const explicit = String(region?.code || '').trim().toUpperCase();
+    if (explicit) return { label: explicit, resolved: true, source: 'svg' };
+
+    const override = REGION_CODE_OVERRIDES[String(slug || '').toLowerCase()]?.[id];
+    if (override) return { label: String(override).trim().toUpperCase(), resolved: true, source: 'metadata' };
+
+    // Alphabetic suffixes are safe human-facing codes. Support both ISO-style hyphens and
+    // older underscore IDs such as PH_MG.
+    const parts = id.split(/[-_]/).filter(Boolean);
+    const suffix = parts.length > 1 ? parts[parts.length - 1] : id;
+    if (/[A-Z]/.test(suffix) && !/^\d+$/.test(suffix)) {
+        return { label: suffix, resolved: true, source: 'svg-id' };
+    }
+
+    // Numeric/raw identifiers are legitimate SVG IDs, but inventing an abbreviation from the
+    // province name is not deterministic. Show a visible placeholder and let validation explain
+    // how to supply data-code/data-abbr/data-label or a country metadata entry.
+    return { label: '?', resolved: false, source: 'unresolved' };
+}
+
 function regionLabelText(region, mode = 'codes', slug = state.activeSlug) {
     const id = String(region?.id || region || '').trim().toUpperCase();
     if (!id) return '';
     if (mode === 'numbers') return id;
-
-    const explicit = String(region?.code || '').trim().toUpperCase();
-    if (explicit) return explicit;
-
-    const override = REGION_CODE_OVERRIDES[String(slug || '').toLowerCase()]?.[id];
-    if (override) return override;
-
-    // Treat both '-' and '_' as region separators. This fixes SVGs such as PH_MG while
-    // preserving normal ISO-style IDs such as PH-NEC.
-    const parts = id.split(/[-_]/).filter(Boolean);
-    const suffix = parts.length > 1 ? parts[parts.length - 1] : id;
-    if (/[A-Z]/.test(suffix)) return suffix;
-
-    // A numeric suffix is a valid raw subdivision ID (Thailand is a good example), but it is
-    // not useful as a human-facing abbreviation. Use a deterministic name abbreviation unless
-    // the SVG supplies data-code/data-abbr or a curated mapping exists.
-    return deriveRegionAbbreviation(region?.name || id);
+    return resolveRegionCountryCode(region, slug).label;
 }
 
-function deriveRegionAbbreviation(name) {
-    const words = String(name || '')
-        .normalize('NFKD')
-        .replace(/[\u0300-\u036f]/g, '')
-        .toUpperCase()
-        .replace(/[^A-Z0-9 ]+/g, ' ')
-        .split(/\s+/)
-        .filter(Boolean)
-        .filter(word => !['PROVINCE', 'STATE', 'REGION', 'DISTRICT', 'ADMINISTRATION'].includes(word));
-    if (!words.length) return '';
-    if (words.length >= 3) return words.slice(0, 3).map(word => word[0]).join('');
-    if (words.length === 2) return `${words[0].slice(0, 2)}${words[1][0]}`.slice(0, 3);
-    return words[0].slice(0, 3);
+function unresolvedRegionCountryCodes(slug) {
+    const regions = state.svgMeta.get(slug)?.regions || [];
+    return regions.filter(region => !resolveRegionCountryCode(region, slug).resolved);
 }
 
 function cssEscape(value) {
@@ -2735,8 +2741,17 @@ function pointInsideBounds(lat, lon, bounds) {
     return lat >= bounds.minLat && lat <= bounds.maxLat && lon >= bounds.minLon && lon <= bounds.maxLon;
 }
 
+function currentHotspotIssues(slug, h, index = null) {
+    const live = validateHotspot(slug, h, { index });
+    if (!Number.isInteger(index)) return live;
+    const cachedDeep = (state.deepValidationIssues.get(slug) || [])
+        .filter(issue => issue.hotspotIndex === index)
+        .map(issue => ({ ...issue, text: issue.hotspotText || issue.text }));
+    return dedupeIssues([...live, ...cachedDeep]);
+}
+
 function hotspotValidationStatus(slug, h, index = null) {
-    const issues = validateHotspot(slug, h, { index });
+    const issues = currentHotspotIssues(slug, h, index);
     if (issues.some(i => i.level === 'error')) return { level: 'error', label: 'Invalid' };
     if (issues.some(i => i.level === 'warning')) return { level: 'warning', label: 'Needs review' };
     return { level: 'ok', label: 'Valid' };
@@ -2811,15 +2826,25 @@ function validateCountry(slug) {
     const entry = state.catalog[slug];
     const meta = state.svgMeta.get(slug);
     const issues = [];
-    if (!String(entry.countryName || '').trim()) issues.push({ level: 'error', text: 'Country name is missing.' });
-    if (!entry.title) issues.push({ level: 'error', text: 'Public map title is missing.' });
-    if (!entry.svgUrl) issues.push({ level: 'error', text: 'SVG path is missing.' });
-    if (!meta) issues.push({ level: 'error', text: 'SVG has not been loaded.' });
+    if (!String(entry.countryName || '').trim()) issues.push({ level: 'error', target: 'countryName', text: 'Country name is missing.' });
+    if (!entry.title) issues.push({ level: 'error', target: 'mapTitle', text: 'Public map title is missing.' });
+    if (!entry.svgUrl) issues.push({ level: 'error', target: 'mapSvg', text: 'SVG path is missing.' });
+    if (!meta) issues.push({ level: 'error', target: 'mapSvg', text: 'SVG has not been loaded.' });
     else {
-        if (!meta.regions.length) issues.push({ level: 'error', text: 'No province/state IDs found in the SVG.' });
-        if (!entry.geoBounds) issues.push({ level: 'error', text: 'Geographic bounds are missing.' });
+        if (!meta.regions.length) issues.push({ level: 'error', target: 'mapSvg', text: 'No province/state IDs found in the SVG.' });
+        if (!entry.geoBounds) issues.push({ level: 'error', target: 'mapSvg', text: 'Geographic bounds are missing.' });
+        const unresolvedCodes = unresolvedRegionCountryCodes(slug);
+        if (unresolvedCodes.length) {
+            const sample = unresolvedCodes.slice(0, 4).map(region => region.id).join(', ');
+            const remaining = unresolvedCodes.length - Math.min(unresolvedCodes.length, 4);
+            issues.push({
+                level: 'warning',
+                target: 'regionCodes',
+                text: `Country Codes need metadata for ${unresolvedCodes.length} SVG region${unresolvedCodes.length === 1 ? '' : 's'} (${sample}${remaining ? ` +${remaining} more` : ''}). Add data-code/data-abbr/data-label to the SVG or a country entry in manager/region-metadata.js.`,
+            });
+        }
     }
-    if (!entry.hotspots.length) issues.push({ level: 'warning', text: 'No hotspots yet.' });
+    if (!entry.hotspots.length) issues.push({ level: 'warning', target: 'hotspots', text: 'No hotspots yet.' });
     entry.hotspots.forEach((h, index) => {
         validateHotspot(slug, h, { index }).forEach(issue => issues.push({ ...issue, hotspotIndex: index, text: `${h.title || `Hotspot ${index + 1}`}: ${issue.text}` }));
     });
@@ -2870,17 +2895,15 @@ async function validateCountryDeep(slug) {
             referencedImages.get(path).push(`${h.title || `Hotspot ${index + 1}`}${isInactive ? ' (unused)' : ''}`);
             const stat = state.fileStats.get(path);
             if (state.stagedDeletes.has(path)) {
-                issues.push({ level: 'error', hotspotIndex: index, text: `${h.title || `Hotspot ${index + 1}`}: image staged for deletion — ${path.split('/').pop()}.` });
+                issues.push({ level: 'error', target: 'images', deep: true, hotspotIndex: index, hotspotText: `Image staged for deletion — ${path.split('/').pop()}.`, text: `${h.title || `Hotspot ${index + 1}`}: image staged for deletion — ${path.split('/').pop()}.` });
             } else if (stat && stat.exists === false && !state.stagedWrites.has(path)) {
-                issues.push({ level: 'error', hotspotIndex: index, text: `${h.title || `Hotspot ${index + 1}`}: missing image — ${path.split('/').pop()}.` });
-            } else if (!isInactive && Number.isFinite(stat?.size) && stat.size > OVERSIZED_IMAGE_BYTES) {
-                issues.push({ level: 'warning', hotspotIndex: index, text: `${h.title || `Hotspot ${index + 1}`}: ${path.split('/').pop()} is ${formatBytes(stat.size)} (over 4 MB).` });
+                issues.push({ level: 'error', target: 'images', deep: true, hotspotIndex: index, hotspotText: `Missing image — ${path.split('/').pop()}.`, text: `${h.title || `Hotspot ${index + 1}`}: missing image — ${path.split('/').pop()}.` });
             }
         }
     });
 
     for (const [path, owners] of referencedImages) {
-        if (owners.length > 1) issues.push({ level: 'warning', text: `Image is referenced by multiple hotspots (${owners.join(', ')}): ${path}.` });
+        if (owners.length > 1) issues.push({ level: 'warning', target: 'images', deep: true, text: `Image is referenced by multiple hotspots (${owners.join(', ')}): ${path}.` });
     }
 
     const hashes = new Map();
@@ -2891,7 +2914,7 @@ async function validateCountryDeep(slug) {
         hashes.get(hash).push(path);
     }
     for (const paths of hashes.values()) {
-        if (paths.length > 1) issues.push({ level: 'warning', text: `Duplicate image content: ${paths.map(path => path.split('/').pop()).join(', ')}.` });
+        if (paths.length > 1) issues.push({ level: 'warning', target: 'images', deep: true, text: `Duplicate image content: ${paths.map(path => path.split('/').pop()).join(', ')}.` });
     }
 
     for (let i = 0; i < entry.hotspots.length; i++) {
@@ -2900,7 +2923,7 @@ async function validateCountryDeep(slug) {
             const b = entry.hotspots[j];
             const similarity = textSimilarity(a.title, b.title);
             if (similarity >= 0.92 && normalizedText(a.title) !== normalizedText(b.title)) {
-                issues.push({ level: 'warning', hotspotIndex: i, text: `Possible duplicate: “${a.title || `Hotspot ${i + 1}`}” / “${b.title || `Hotspot ${j + 1}`}”.` });
+                issues.push({ level: 'warning', target: 'title', deep: true, hotspotIndex: i, hotspotText: `Possible duplicate: “${a.title || `Hotspot ${i + 1}`}” / “${b.title || `Hotspot ${j + 1}`}”.`, text: `Possible duplicate: “${a.title || `Hotspot ${i + 1}`}” / “${b.title || `Hotspot ${j + 1}`}”.` });
             }
         }
     }
@@ -2912,12 +2935,14 @@ async function validateCountryDeep(slug) {
         const unused = files.filter(file => imageExt.test(file.path) && !keep.has(file.path) && !state.stagedDeletes.has(file.path));
         if (unused.length) {
             const total = unused.reduce((sum, file) => sum + Number(file.size || 0), 0);
-            issues.push({ level: 'warning', text: `${unused.length} unused image file${unused.length === 1 ? '' : 's'} (${formatBytes(total)}). Review with “Find unused images”.` });
+            issues.push({ level: 'warning', target: 'images', deep: true, text: `${unused.length} unused image file${unused.length === 1 ? '' : 's'} (${formatBytes(total)}). Review with “Find unused images”.` });
         }
     } catch (error) {
-        issues.push({ level: 'warning', text: `Could not scan image folder: ${error.message}` });
+        issues.push({ level: 'warning', target: 'images', deep: true, text: `Could not scan image folder: ${error.message}` });
     }
-    return dedupeIssues(issues);
+    const deduped = dedupeIssues(issues);
+    state.deepValidationIssues.set(slug, deduped.filter(issue => issue.deep));
+    return deduped;
 }
 
 async function validateEverything() {
@@ -2967,6 +2992,7 @@ async function runValidationDialog() {
         els.validationDialogTitle.textContent = 'Issues';
         els.validationSummary.innerHTML = '<p class="muted">Checking project issues…</p>';
         els.validationResults.innerHTML = '';
+        if (els.validationScrollRegion) els.validationScrollRegion.scrollTop = 0;
         els.validationDialog.showModal();
         const issues = await validateEverything();
         renderValidationResults(issues, { scope: 'global' });
@@ -2984,6 +3010,7 @@ async function runCountryValidationDialog() {
         els.validationDialogTitle.textContent = `Validate ${entry.countryName || countryNameFromEntry(entry) || slug}`;
         els.validationSummary.innerHTML = '<p class="muted">Checking this country…</p>';
         els.validationResults.innerHTML = '';
+        if (els.validationScrollRegion) els.validationScrollRegion.scrollTop = 0;
         els.validationDialog.showModal();
         await ensureSvgLoaded(slug);
         backfillGeographicCoordinates(slug);
@@ -3015,6 +3042,7 @@ function renderValidationResults(issues, { scope = 'global', slug = null } = {})
         : 'Current country';
     els.validationSummary.innerHTML = `<div class="issues-summary ${errors ? 'error' : warnings ? 'warning' : 'ok'}"><i></i><div><strong>${escapeHtml(summaryText)}</strong><span>${escapeHtml(scopeText)}</span></div></div>`;
     els.validationResults.innerHTML = '';
+    if (els.validationScrollRegion) els.validationScrollRegion.scrollTop = 0;
 
     if (scope === 'global') {
         els.validationFilters.classList.remove('hidden');
@@ -3080,6 +3108,7 @@ function applyValidationFilter(filter) {
         const visible = [...group.querySelectorAll('.validation-item[data-level]')].some(item => !item.classList.contains('hidden'));
         group.classList.toggle('hidden', !visible);
     });
+    if (els.validationScrollRegion) els.validationScrollRegion.scrollTop = 0;
 }
 
 async function openIssueTarget(issue) {
@@ -3089,10 +3118,77 @@ async function openIssueTarget(issue) {
         await selectCountry(issue.slug);
         if (state.activeSlug !== issue.slug) return;
     }
+
     if (Number.isInteger(issue.hotspotIndex) && state.catalog[issue.slug]?.hotspots?.[issue.hotspotIndex]) {
         selectHotspot(issue.hotspotIndex);
-        els.hotspotEditor?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+        await nextFrame();
+        focusHotspotIssueTarget(issue.target || 'general');
+        return;
     }
+
+    focusCountryIssueTarget(issue.target || 'general');
+}
+
+function issueFocusElement(element) {
+    if (!element) return null;
+    if (element.matches?.('select.native-select-hidden')) {
+        return element.closest('.custom-select')?.querySelector('.custom-select-button') || element;
+    }
+    return element;
+}
+
+function revealIssueTarget(element, { focus = true } = {}) {
+    const target = issueFocusElement(element);
+    if (!target) return;
+    const highlight = target.closest?.('.field, .coordinate-card, .images-section, .panel, .country-header') || target;
+    highlight.scrollIntoView?.({ behavior: 'smooth', block: 'center', inline: 'nearest' });
+    highlight.classList.remove('issue-target-flash');
+    // Restart the animation even when the same issue is opened twice in succession.
+    void highlight.offsetWidth;
+    highlight.classList.add('issue-target-flash');
+    window.setTimeout(() => highlight.classList.remove('issue-target-flash'), 1800);
+    if (focus && typeof target.focus === 'function') {
+        window.setTimeout(() => target.focus({ preventScroll: true }), 180);
+    }
+}
+
+function focusHotspotIssueTarget(target) {
+    const targets = {
+        title: els.fieldTitle,
+        coordinates: els.hotspotEditor?.querySelector('.coordinate-card'),
+        province: els.fieldProvince,
+        images: els.hotspotEditor?.querySelector('.images-section'),
+        general: els.hotspotEditor?.querySelector('.editor-heading'),
+    };
+    revealIssueTarget(targets[target] || targets.general, { focus: target !== 'images' && target !== 'general' });
+}
+
+function focusCountryIssueTarget(target) {
+    if (target === 'hotspots') {
+        revealIssueTarget(els.addHotspot);
+        return;
+    }
+    if (target === 'regionCodes') {
+        setRegionLabelMode('codes');
+        revealIssueTarget(els.mapLabelMode);
+        return;
+    }
+    if (target === 'mapSvg') {
+        els.replaceSvg?.closest('details')?.setAttribute('open', '');
+        revealIssueTarget(els.replaceSvg);
+        return;
+    }
+    if (target === 'images') {
+        els.cleanupUnusedImages?.closest('details')?.setAttribute('open', '');
+        revealIssueTarget(els.cleanupUnusedImages);
+        return;
+    }
+    if (target === 'countryName' || target === 'mapTitle') {
+        openCountryDialog('edit');
+        window.setTimeout(() => revealIssueTarget(target === 'countryName' ? els.mapCountryName : els.mapTitle), 0);
+        return;
+    }
+    revealIssueTarget(els.countryWorkspace, { focus: false });
 }
 
 function renderCountryHealth() {
@@ -3106,7 +3202,7 @@ function renderCountryHealth() {
     const overallDetail = stats.errors
         ? `${stats.errors} blocking issue${stats.errors === 1 ? '' : 's'}`
         : stats.warnings
-            ? `${stats.warnings} hotspot${stats.warnings === 1 ? '' : 's'} to review`
+            ? `${stats.warnings} review issue${stats.warnings === 1 ? '' : 's'}`
             : 'No issues found';
     els.countryHealth.innerHTML = `
         <div class="overview-status ${overall}">
@@ -3735,6 +3831,7 @@ function serializeCatalog(catalog) {
 }
 
 function markDirty() {
+    if (state.activeSlug) state.deepValidationIssues.delete(state.activeSlug);
     state.dirty = true;
     els.resetChanges.disabled = false;
     els.saveAll.disabled = false;

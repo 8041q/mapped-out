@@ -34,7 +34,7 @@ launcher.command
 Start it from the repository root:
 
 ```text
-python launcher.py
+python app.py
 ```
 
 The manager opens locally in your browser and works directly with the checked-out repository on your computer.
@@ -81,7 +81,7 @@ If you are unsure about an edit, you can discard the pending changes and reload 
 
 ## Validation and Issues
 
-Use **Validate country** beside **Import Excel** while editing a country. The header **Issues** button is the project-wide tracker and groups blocking/review items by country.
+Use **Validate country** beside **Import Excel** while editing a country. The header **Issues** button is the project-wide tracker and groups blocking/review items by country. The Issues window keeps its summary and filters fixed while the issue list scrolls independently; clicking an issue takes you to the affected country/hotspot and highlights the field or section that needs attention.
 
 The manager uses three status levels:
 
@@ -172,7 +172,9 @@ You can:
 - hover over hotspots to inspect them
 - drag hotspots to correct their location
 
-Moving a hotspot updates its latitude, longitude, SVG position, and detected province/state together. The editor has a **Labels** control with **Off / Codes / Numbers** modes. **Codes** shows the full stable SVG region ID (for example `TH-81`); **Numbers** shows the compact numeric suffix when one exists (for example `81`).
+Moving a hotspot updates its latitude, longitude, and SVG position. Its assigned province/state stays authoritative; if the marker is moved outside that province, the hotspot turns yellow and the Province/state field is marked **Mismatch** instead of silently changing the assignment.
+
+The map editor has **Off / Country Codes / Numbers** modes. **Country Codes** shows a human-facing province/state abbreviation (for example `AYA` or `NEC`). **Numbers** shows the exact raw SVG region ID (for example `TH-14`, `PH-NEC`, or `PH_MG`). Use `Ctrl + scroll` over the map to zoom without taking over normal page scrolling.
 
 **Reset selected** restores only the selected hotspot's geographic position and province/state to its editing baseline. Text and image changes are not removed.
 
@@ -190,7 +192,7 @@ Country slug (lowercase letters and hyphens only; used for link/url)
 SVG map
 ```
 
-The manager reads the SVG geographic bounds, dimensions, and province/state IDs automatically.
+The manager reads the SVG geographic bounds, dimensions, and province/state IDs automatically. For the **Country Codes** overlay, an SVG can provide `data-code`, `data-abbr`, or `data-label` on each region. Alphabetic ID suffixes such as `PH-NEC` are used safely as a fallback. Countries whose raw IDs are numeric can define their abbreviations in `manager/region-metadata.js`; unresolved codes are shown as a validation review item rather than guessed.
 
 Hotspots do not need to be added immediately. A country can be created with only its SVG and populated later.
 

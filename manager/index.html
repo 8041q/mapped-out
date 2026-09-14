@@ -316,7 +316,9 @@
                 <button type="button" data-issue-filter="error">Blocking</button>
                 <button type="button" data-issue-filter="warning">Review</button>
             </div>
-            <div id="validation-results" class="validation-results"></div>
+            <div id="validation-scroll-region" class="issues-scroll-region" tabindex="0" aria-label="Issue results">
+                <div id="validation-results" class="validation-results"></div>
+            </div>
         </div>
         <div class="dialog-actions">
             <button class="button button-primary" data-close-dialog="validation-dialog">Close</button>
@@ -432,13 +434,14 @@
                 <section><h3>Excel imports</h3><p>The manager ignores the Image column and everything after it. Existing matches are merged and their photos are kept.</p><p>An import only stops after five consecutive empty rows.</p></section>
                 <section><h3>Map editor</h3><p>Use + / − or Ctrl + scroll to zoom. Country Codes shows a human-facing province/state abbreviation; Numbers shows the exact SVG region ID. Drag the background to pan or a marker to move it.</p></section>
             </div>
-            <p class="help-footnote">The full user guide is included at <code>manager/USER_GUIDE.md</code>.</p>
+            <p class="help-footnote">The full user guide is included at <code>USER_GUIDE.md</code>.</p>
         </div>
         <div class="dialog-actions"><button class="button button-primary" data-close-dialog="help-dialog">Got it</button></div>
     </dialog>
 
     <div id="toast" class="toast" role="status" aria-live="polite"></div>
 
-    <script src="manager.js?v=20260914-4"></script>
+    <script src="region-metadata.js?v=20260914-5"></script>
+    <script src="manager.js?v=20260914-5"></script>
 </body>
 </html>

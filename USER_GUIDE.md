@@ -48,9 +48,9 @@ You can always override the province/state manually if the automatic result is w
 
 ## Using the Map editor
 
-Use the `+` and `−` buttons in the corner to zoom and **Fit** to return to the full country. Drag the map background to pan. The mouse wheel keeps its normal page-scrolling behavior and does not zoom the map. The **Labels** control has three modes: **Off**, **Codes** (the full SVG region ID, such as `TH-81`), and **Numbers** (the compact numeric suffix, such as `81`, when the region ID has one). These labels are editor-only watermarks.
+Use the `+` and `−` buttons in the corner to zoom and **Fit** to return to the full country. Drag the map background to pan. Normal scrolling still scrolls the manager; hold **Ctrl** while scrolling over the map to zoom at the pointer. The editor-only watermark control has three modes: **Off**, **Country Codes** (a human-facing province/state abbreviation such as `AYA` or `NEC`), and **Numbers** (the exact raw SVG region ID such as `TH-14`, `PH-NEC`, or `PH_MG`).
 
-Hover a hotspot to see its facility name, city/region when available, and current coordinates. Drag a hotspot to correct its position. The latitude, longitude, SVG position, and detected province are updated together.
+Hover a hotspot to see its facility name, city/region when available, and current coordinates. Drag a hotspot to correct its position. Latitude, longitude, and SVG position update together, but the assigned province/state does not silently change. If the marker no longer falls inside its assigned province/state, the marker turns yellow and the Province/state field shows a **Mismatch** review badge.
 
 If you move a hotspot and want to undo only its map position, use **Reset selected**. This restores the hotspot's latitude, longitude, map position and province/state to its baseline from the last applied state. For a new/imported hotspot that has not been applied yet, it returns to the position where it was first added/imported. Text and image edits are left alone.
 
@@ -72,6 +72,8 @@ Choose the `+` button beside Countries. Country name, country slug, and the coun
 
 The manager reads the SVG geographic bounds, map size, and province/state IDs automatically. If the SVG provides width/height instead of a `viewBox`, the manager creates the equivalent preview view internally without changing the original SVG.
 
+For **Country Codes**, the preferred source is a `data-code`, `data-abbr`, or `data-label` attribute on each SVG region. Alphabetic suffixes such as `PH-NEC` are safe automatic fallbacks. If a map uses numeric/raw IDs that do not contain a human-facing abbreviation, add that country mapping to `manager/region-metadata.js`. The manager will flag unresolved codes for review rather than inventing an abbreviation.
+
 You do not need to import hotspots at the same time. A country can be created with only its SVG and populated later.
 
 ## Replacing a country SVG
@@ -83,6 +85,8 @@ Run **Validate country** after replacing an SVG. This catches province IDs that 
 ## Validation and Issues
 
 Use **Validate country** beside **Import Excel** for the country you are editing. Use **Issues** in the header for a project-wide view grouped by country. The Issues button itself carries the current green/yellow/red status instead of showing a separate repository-status indicator.
+
+The Issues dialog has a fixed responsive size. Its summary and **All / Blocking / Review** filters stay visible while the issue list scrolls independently, even with large issue counts. Clicking an issue opens the correct country or hotspot and highlights the affected field/section when one is known.
 
 Validation checks required fields, coordinate bounds and likely latitude/longitude swaps, province geometry/mismatches, possible duplicate facilities, missing or oversized active images, duplicate image references/content, truly unlinked image files, and map consistency. Optional city/region or description fields do not create issues, and facilities are not warned simply because their real-world coordinates are physically close. Photos intentionally switched to **Unused** remain managed and are not treated as orphaned files.
 

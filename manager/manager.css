@@ -406,24 +406,34 @@ code { font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; }
     height: min(760px, calc(100dvh - 48px));
     max-width: none;
     max-height: none;
+    overflow: hidden;
     display: grid;
     grid-template-rows: auto minmax(0, 1fr) auto;
 }
+#validation-dialog .dialog-heading,
+#validation-dialog .dialog-actions { flex: 0 0 auto; }
 #validation-dialog .dialog-body {
     max-height: none;
     min-height: 0;
     overflow: hidden;
-    display: grid;
-    grid-template-rows: auto auto minmax(0, 1fr);
-    align-content: stretch;
+    display: flex;
+    flex-direction: column;
 }
-#validation-dialog .validation-results {
+#validation-dialog #validation-summary,
+#validation-dialog .issue-filters { flex: 0 0 auto; }
+.issues-scroll-region {
+    flex: 1 1 auto;
     min-height: 0;
-    overflow: auto;
+    overflow-y: auto;
+    overflow-x: hidden;
     overscroll-behavior: contain;
-    padding-right: 4px;
     scrollbar-gutter: stable;
+    padding-right: 4px;
+    margin-top: 8px;
+    outline: none;
 }
+.issues-scroll-region:focus-visible { box-shadow: inset 0 0 0 2px rgba(15,107,99,.12); border-radius: 8px; }
+#validation-dialog .validation-results { margin-top: 0; min-height: min-content; }
 .color-config { border: 1px solid var(--border); border-radius: 9px; padding: 12px; margin-bottom: 12px; background: #fafcfb; }
 .color-config-heading { display: flex; justify-content: space-between; gap: 16px; align-items: center; }
 .color-config-heading small { display: block; color: var(--muted); margin-top: 2px; font-size: 0.625rem; }
@@ -707,6 +717,106 @@ code { font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; }
 }
 
 @container map-editor-panel (max-width: 500px) {
+    .map-editor-actions { grid-template-columns: 1fr; }
+    .map-editor-actions > .button { width: 100%; }
+}
+
+/* Issue navigation: briefly show exactly where a clicked issue lands. */
+@keyframes issue-target-pulse {
+    0%, 100% { box-shadow: 0 0 0 0 rgba(15,107,99,0); }
+    22% { box-shadow: 0 0 0 4px rgba(15,107,99,.16); }
+}
+.issue-target-flash { animation: issue-target-pulse 1.65s ease-out; }
+
+/* Component-width responsiveness. These react to the space a component actually has after
+   the sidebar/editor grid is accounted for, instead of bouncing between viewport breakpoints. */
+#country-workspace { container-type: inline-size; container-name: country-workspace; }
+.hotspot-panel { container-type: inline-size; container-name: hotspot-panel; }
+
+@container country-workspace (max-width: 980px) {
+    .country-header { display: grid; grid-template-columns: minmax(0, 1fr); gap: 12px; }
+    .country-header > div:first-child, .country-header p { max-width: 100%; }
+    .country-actions { justify-content: flex-start; width: 100%; }
+    #country-health { align-items: flex-start; flex-direction: column; gap: 10px; }
+    .overview-metrics { width: 100%; grid-auto-columns: minmax(0, 1fr); }
+    .overview-metrics > div:first-child { border-left: 0; padding-left: 0; }
+}
+
+@container country-workspace (max-width: 660px) {
+    .country-actions {
+        display: grid;
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+        gap: 8px;
+    }
+    .country-actions > .button,
+    .country-actions > .action-menu,
+    .country-actions > .action-menu > summary { width: 100%; }
+    .country-actions > .action-menu > summary { justify-content: center; }
+    .overview-metrics { grid-template-columns: repeat(2, minmax(0, 1fr)); grid-auto-flow: row; }
+    .overview-metrics > div { border-left: 0; border-top: 1px solid var(--border); padding: 8px 0; }
+}
+
+@container country-workspace (max-width: 390px) {
+    .country-actions { grid-template-columns: 1fr; }
+}
+
+@container hotspot-panel (max-width: 650px) {
+    .hotspot-panel-heading { flex-direction: column; align-items: stretch; }
+    .hotspot-filter-controls {
+        display: grid;
+        grid-template-columns: minmax(145px, .75fr) minmax(0, 1.25fr);
+        width: 100%;
+        justify-content: stretch;
+    }
+    .hotspot-filter-controls .custom-select,
+    .hotspot-filter-controls .search-input { width: 100%; max-width: none; }
+}
+
+@container hotspot-panel (max-width: 430px) {
+    .hotspot-filter-controls { grid-template-columns: 1fr; }
+    .bulk-toolbar { align-items: stretch; }
+    .bulk-toolbar .bulk-select-all { width: 100%; }
+    .bulk-toolbar .custom-select,
+    .bulk-toolbar .button { flex: 1 1 100%; width: 100%; max-width: none; }
+}
+
+/* When the sidebar moves above the workspace at 900px the content suddenly gains width.
+   Keep control composition stable across that transition instead of snapping back to a desktop row. */
+@media (max-width: 900px) {
+    .country-actions {
+        display: grid;
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+        gap: 8px;
+        width: 100%;
+    }
+    .country-actions > .button,
+    .country-actions > .action-menu,
+    .country-actions > .action-menu > summary { width: 100%; }
+    .country-actions > .action-menu > summary { justify-content: center; }
+
+    .hotspot-panel-heading { flex-direction: column; align-items: stretch; }
+    .hotspot-filter-controls {
+        display: grid;
+        grid-template-columns: minmax(145px, .75fr) minmax(0, 1.25fr);
+        width: 100%;
+        justify-content: stretch;
+    }
+    .hotspot-filter-controls .custom-select,
+    .hotspot-filter-controls .search-input { width: 100%; max-width: none; }
+
+    .preview-panel .panel-heading { align-items: flex-start; flex-direction: column; }
+    .map-editor-actions {
+        width: 100%;
+        grid-template-columns: minmax(0, 1fr) auto;
+        justify-content: stretch;
+    }
+    .map-label-mode { width: 100%; justify-content: stretch; }
+    .map-label-mode button { flex: 1 1 0; }
+}
+
+@media (max-width: 430px) {
+    .country-actions { grid-template-columns: 1fr; }
+    .hotspot-filter-controls { grid-template-columns: 1fr; }
     .map-editor-actions { grid-template-columns: 1fr; }
     .map-editor-actions > .button { width: 100%; }
 }
