@@ -4,7 +4,7 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Project Map Manager</title>
-    <link rel="stylesheet" href="manager.css?v=20260914-2">
+    <link rel="stylesheet" href="manager.css?v=20260914-4">
 </head>
 <body>
     <header class="app-header">
@@ -23,7 +23,7 @@
             <button id="help-button" class="button button-quiet">Help</button>
             <button id="reset-changes" class="button button-quiet" disabled>Discard changes</button>
             <button id="validate-all" class="button button-secondary issues-button" disabled aria-label="Project issues">
-                <i id="issues-indicator" class="status-dot neutral" aria-hidden="true"></i><span>Issues</span><span id="issues-count" class="status-count">—</span>
+                <i id="issues-indicator" class="status-dot neutral" aria-hidden="true"></i><span>Issues</span><span id="issues-count" class="status-count">-</span>
             </button>
             <button id="save-all" class="button button-primary review-button" disabled>
                 <i id="review-indicator" class="status-dot" aria-hidden="true"></i><span>Review changes</span>
@@ -201,10 +201,14 @@
                         <div class="panel-heading">
                             <div>
                                 <h3>Map editor</h3>
-                                <span class="muted">Use + / − to zoom · drag the map to pan · drag a hotspot to move it.</span>
+                                <span class="muted">Use + / − or Ctrl + scroll to zoom · drag the map to pan · drag a hotspot to move it.</span>
                             </div>
                             <div class="map-editor-actions">
-                                <label class="map-code-toggle" title="Show province/state codes over the editor map"><input id="map-label-toggle" type="checkbox" checked><span>Region codes</span></label>
+                                <div id="map-label-mode" class="map-label-mode" role="group" aria-label="Map region identifiers">
+                                    <button type="button" data-region-label-mode="off" aria-pressed="false">Off</button>
+                                    <button type="button" data-region-label-mode="codes" aria-pressed="true" title="Show the human-facing province/state code, such as AYA or NEC">Country Codes</button>
+                                    <button type="button" data-region-label-mode="numbers" aria-pressed="false" title="Show the exact SVG region ID, such as TH-14, PH-NEC, or PH_MG">Numbers</button>
+                                </div>
                                 <button id="reset-position" class="button button-secondary" disabled>Reset selected</button>
                             </div>
                         </div>
@@ -300,7 +304,7 @@
         </form>
     </dialog>
 
-    <dialog id="validation-dialog" class="dialog dialog-wide">
+    <dialog id="validation-dialog" class="dialog dialog-wide issues-dialog">
         <div class="dialog-heading">
             <h2 id="validation-dialog-title">Issues</h2>
             <button class="icon-button" data-close-dialog="validation-dialog" aria-label="Close"><svg class="ui-icon" viewBox="0 0 16 16" aria-hidden="true"><path d="M4 4l8 8M12 4 4 12" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/></svg></button>
@@ -426,7 +430,7 @@
                 <section><h3>Status colours</h3><p><i class="legend-dot ok"></i><strong>Green</strong> - ready.</p><p><i class="legend-dot warning"></i><strong>Yellow</strong> - usable, but worth checking.</p><p><i class="legend-dot error"></i><strong>Red</strong> - fix before applying changes.</p></section>
                 <section><h3>Images</h3><p>Images are never compressed automatically. Files over 4 MB are flagged so you can reduce them individually if useful.</p><p>Use the Used / Unused switch to keep a file in the project without showing it on the public map. Reduced images stay temporary until you apply the final changes.</p></section>
                 <section><h3>Excel imports</h3><p>The manager ignores the Image column and everything after it. Existing matches are merged and their photos are kept.</p><p>An import only stops after five consecutive empty rows.</p></section>
-                <section><h3>Map editor</h3><p>Use + / − to zoom. Region codes identify province/state geometry. Drag the background to pan or a marker to move it.</p></section>
+                <section><h3>Map editor</h3><p>Use + / − or Ctrl + scroll to zoom. Country Codes shows a human-facing province/state abbreviation; Numbers shows the exact SVG region ID. Drag the background to pan or a marker to move it.</p></section>
             </div>
             <p class="help-footnote">The full user guide is included at <code>manager/USER_GUIDE.md</code>.</p>
         </div>
@@ -435,6 +439,6 @@
 
     <div id="toast" class="toast" role="status" aria-live="polite"></div>
 
-    <script src="manager.js?v=20260914-2"></script>
+    <script src="manager.js?v=20260914-4"></script>
 </body>
 </html>

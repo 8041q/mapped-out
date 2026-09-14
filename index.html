@@ -1,35 +1,444 @@
 ﻿<!DOCTYPE html>
-<html lang="en">
+<html lang="en" data-font-size="medium">
 <head>
-    <meta name="viewport" content="width=device-width, initial-scale=1.0" charset="UTF-8">
-    <title>Map Projects</title>
-    <script src="https://d3js.org/d3.v7.min.js"></script>
-    <link rel="stylesheet" href="data/styles.css">
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Project Map Manager</title>
+    <link rel="stylesheet" href="manager.css?v=20260914-4">
 </head>
 <body>
-
-    <!--  Landing page (card grid)  -->
-    <section id="landing"></section>
-
-    <!--  Map view (hidden until a hash selects a map)  -->
-    <main class="map-area">
-    <div class="map-card">
-        <div class="map-meta">
-            <a id="back-link" href="#" class="back-link">&#8592; All Maps</a>
-            <h1></h1>
-            <img src="" alt="" style="max-width: 200px;">
-            <div class="map-search">
-                <input type="search" id="map-search" placeholder="Search province or city" aria-label="Search provinces" />
-                <ul class="map-search-suggestions" id="map-search-suggestions" aria-hidden="true"></ul>
+    <header class="app-header">
+        <div class="app-brand">
+            <div class="brand-kicker">SAIKANG Medical</div>
+            <div class="brand-title-row">
+                <h1>Project Map Manager</h1>
             </div>
         </div>
-        <div id="map">
-            <!-- SVG injected here by JavaScript on demand -->
+        <div class="header-actions">
+            <div class="font-size-control" role="group" aria-label="Text size">
+                <button type="button" data-font-size="small" aria-pressed="false">Small</button>
+                <button type="button" data-font-size="medium" aria-pressed="true">Medium</button>
+                <button type="button" data-font-size="large" aria-pressed="false">Large</button>
+            </div>
+            <button id="help-button" class="button button-quiet">Help</button>
+            <button id="reset-changes" class="button button-quiet" disabled>Discard changes</button>
+            <button id="validate-all" class="button button-secondary issues-button" disabled aria-label="Project issues">
+                <i id="issues-indicator" class="status-dot neutral" aria-hidden="true"></i><span>Issues</span><span id="issues-count" class="status-count">-</span>
+            </button>
+            <button id="save-all" class="button button-primary review-button" disabled>
+                <i id="review-indicator" class="status-dot" aria-hidden="true"></i><span>Review changes</span>
+            </button>
         </div>
+    </header>
+
+    <div id="unsupported" class="notice notice-error hidden">
+        The local manager server could not detect the repository. Run <code>launcher.command</code>/<code>launcher.bat</code> (or <code>python app.py</code>) from the repository root.
     </div>
+
+    <main class="app-shell">
+        <aside class="country-sidebar">
+            <div class="sidebar-heading">
+                <h2>Countries</h2>
+                <button id="add-country" class="icon-button" title="Add country" aria-label="Add country" disabled><svg class="button-icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 5v14M5 12h14" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"/></svg></button>
+            </div>
+            <div id="country-list" class="country-list">
+                <div class="empty-state compact">Detecting repository…</div>
+            </div>
+        </aside>
+
+        <section id="workspace" class="workspace empty-workspace">
+            <div id="workspace-empty" class="empty-state large">
+                <strong>Select a country</strong>
+                <span>Manage its map, projects and images without editing source files.</span>
+            </div>
+
+            <div id="country-workspace" class="hidden">
+                <div class="country-header">
+                    <div>
+                        <div class="country-route-label" id="country-slug"></div>
+                        <h2 id="country-title"></h2>
+                        <p id="country-description"></p>
+                    </div>
+                    <div class="country-actions">
+                        <button id="import-excel" class="button button-secondary">Import Excel</button>
+                        <button id="validate-country" class="button button-secondary">Validate country</button>
+                        <button id="add-hotspot" class="button button-primary button-with-icon"><svg class="button-icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 5v14M5 12h14" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"/></svg>Add hotspot</button>
+                        <details class="action-menu" id="country-tools-menu">
+                            <summary class="button button-quiet">More <svg class="ui-icon action-menu-chevron" viewBox="0 0 16 16" aria-hidden="true"><path d="m3.5 6 4.5 4 4.5-4" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/></svg></summary>
+                            <div class="action-menu-popover">
+                                <div class="action-menu-label">Map</div>
+                                <button id="country-settings" type="button">Map settings</button>
+                                <button id="replace-svg" type="button">Replace country SVG</button>
+                                <div class="action-menu-separator"></div>
+                                <div class="action-menu-label">Images</div>
+                                <button id="cleanup-unused-images" type="button">Find unused images</button>
+                            </div>
+                        </details>
+                    </div>
+                </div>
+
+                <div id="country-health" class="health-strip"></div>
+                <div id="import-history" class="import-history hidden" aria-live="polite"></div>
+
+                <div class="manager-grid">
+                    <section class="panel hotspot-panel">
+                        <div class="panel-heading hotspot-panel-heading">
+                            <div>
+                                <h3>Hotspots</h3>
+                                <span id="hotspot-count" class="muted"></span>
+                            </div>
+                            <div class="hotspot-filter-controls">
+                                <select id="hotspot-filter" class="compact-select" aria-label="Filter hotspots">
+                                    <option value="all">All hotspots</option>
+                                    <option value="error">Invalid</option>
+                                    <option value="warning">Needs review</option>
+                                    <option value="ok">Valid</option>
+                                    <option value="missing-images">Missing images</option>
+                                    <option value="imported-session">Imported this session</option>
+                                </select>
+                                <input id="hotspot-search" class="search-input" type="search" placeholder="Search by facility, city or province">
+                            </div>
+                        </div>
+                        <div id="bulk-toolbar" class="bulk-toolbar hidden">
+                            <label class="bulk-select-all"><input id="bulk-select-all" type="checkbox"> <span id="bulk-selected-count">0 selected</span></label>
+                            <select id="bulk-province" class="compact-select" aria-label="Province for selected hotspots"><option value="">Set province…</option></select>
+                            <button id="bulk-apply-province" type="button" class="button button-secondary button-small">Set province</button>
+                            <button id="bulk-validate" type="button" class="button button-secondary button-small">Validate selected</button>
+                            <button id="bulk-remove-images" type="button" class="button button-secondary button-small">Remove images</button>
+                            <button id="bulk-delete" type="button" class="button button-danger-ghost button-small">Delete selected</button>
+                        </div>
+                        <div id="hotspot-list" class="hotspot-list"></div>
+                    </section>
+
+                    <section class="panel editor-panel">
+                        <div id="editor-empty" class="empty-state large">
+                            <strong>Select a hotspot</strong>
+                            <span>Its imported and generated values can be edited here.</span>
+                        </div>
+
+                        <form id="hotspot-editor" class="hidden" autocomplete="off">
+                            <div class="editor-heading">
+                                <div>
+                                    <h3>Hotspot details</h3>
+                                    <span id="hotspot-status-badge" class="status-badge"></span>
+                                </div>
+                                <button id="delete-hotspot" type="button" class="button button-danger-ghost">Delete</button>
+                            </div>
+
+                            <label class="field">
+                                <span>Hospital / facility name <b class="required-mark">*</b></span>
+                                <input id="field-title" type="text" required>
+                            </label>
+
+                            <div class="two-columns">
+                                <label class="field">
+                                    <span>City / region</span>
+                                    <input id="field-city" type="text">
+                                </label>
+                                <label class="field">
+                                    <span>Year</span>
+                                    <input id="field-year" type="text">
+                                </label>
+                            </div>
+
+                            <label class="field">
+                                <span>Address</span>
+                                <input id="field-address" type="text">
+                            </label>
+
+                            <label class="field">
+                                <span>Case description</span>
+                                <textarea id="field-description" rows="5"></textarea>
+                            </label>
+
+                            <div class="coordinate-card">
+                                <div class="coordinate-heading">
+                                    <strong>Coordinates</strong>
+                                    <button id="apply-swap" type="button" class="link-button hidden">Apply suggested swap</button>
+                                </div>
+                                <div class="two-columns">
+                                    <label class="field">
+                                        <span>Latitude <b class="required-mark">*</b></span>
+                                        <input id="field-lat" inputmode="decimal" type="text" required>
+                                    </label>
+                                    <label class="field">
+                                        <span>Longitude <b class="required-mark">*</b></span>
+                                        <input id="field-lon" inputmode="decimal" type="text" required>
+                                    </label>
+                                </div>
+                                <div id="coordinate-message" class="field-message"></div>
+                            </div>
+
+                            <div class="two-columns">
+                                <label class="field">
+                                    <span>Province / state <b class="required-mark">*</b></span>
+                                    <select id="field-province" required></select>
+                                </label>
+                                <div class="field generated-field">
+                                    <span>Generated SVG position</span>
+                                    <div><code id="field-xy">-</code></div>
+                                </div>
+                            </div>
+
+                            <div class="images-section">
+                                <div class="images-heading">
+                                    <div>
+                                        <strong>Images</strong>
+                                        <span class="muted">Added separately from Excel · files over 4 MB are flagged, but never changed automatically</span>
+                                    </div>
+                                    <label class="button button-secondary file-button">
+                                        Add Images
+                                        <input id="image-picker" type="file" accept="image/*" multiple hidden>
+                                    </label>
+                                </div>
+                                <div id="image-dropzone" class="dropzone"><strong>Drop images here</strong><span>or use “Add images” above</span></div>
+                                <div id="image-list" class="image-list"></div>
+                            </div>
+                        </form>
+                    </section>
+
+                    <section class="panel preview-panel">
+                        <div class="panel-heading">
+                            <div>
+                                <h3>Map editor</h3>
+                                <span class="muted">Use + / − or Ctrl + scroll to zoom · drag the map to pan · drag a hotspot to move it.</span>
+                            </div>
+                            <div class="map-editor-actions">
+                                <div id="map-label-mode" class="map-label-mode" role="group" aria-label="Map region identifiers">
+                                    <button type="button" data-region-label-mode="off" aria-pressed="false">Off</button>
+                                    <button type="button" data-region-label-mode="codes" aria-pressed="true" title="Show the compact country-map code, such as 14 or NEC">Codes</button>
+                                    <button type="button" data-region-label-mode="numbers" aria-pressed="false" title="Show the SVG region number/ID, such as TH-14 or PH-NEC">Numbers</button>
+                                </div>
+                                <button id="reset-position" class="button button-secondary" disabled>Reset selected</button>
+                            </div>
+                        </div>
+                        <div id="map-stage" class="map-stage">
+                            <div id="map-preview" class="map-preview">
+                                <div class="empty-state large">SVG preview will appear here.</div>
+                            </div>
+                            <div class="map-navigation" aria-label="Map navigation controls">
+                                <button id="map-zoom-in" type="button" class="map-nav-button" title="Zoom in" aria-label="Zoom in"><svg class="button-icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 5v14M5 12h14" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"/></svg></button>
+                                <button id="map-zoom-out" type="button" class="map-nav-button" title="Zoom out" aria-label="Zoom out"><svg class="button-icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M5 12h14" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"/></svg></button>
+                                <button id="map-zoom-reset" type="button" class="map-nav-button map-nav-fit" title="Fit map" aria-label="Fit map">Fit</button>
+                            </div>
+                            <div id="hotspot-hover-card" class="hotspot-hover-card hidden" role="tooltip"></div>
+                        </div>
+                        <div class="preview-legend">
+                            <span><i class="legend-dot ok"></i> Valid</span>
+                            <span><i class="legend-dot warning"></i> Needs review</span>
+                            <span><i class="legend-dot error"></i> Invalid</span>
+                        </div>
+                    </section>
+                </div>
+            </div>
+        </section>
     </main>
 
-    <script src="data/catalog.js" defer></script>
-    <script src="data/main.js" defer></script>
+    <input id="svg-picker" type="file" accept="image/svg+xml,.svg" hidden>
+    <input id="excel-picker" type="file" accept=".xlsx" hidden>
+
+    <dialog id="country-dialog" class="dialog">
+        <form method="dialog" id="country-form">
+            <div class="dialog-heading">
+                <h2 id="country-dialog-title">Add country</h2>
+                <button type="button" class="icon-button" data-close-dialog="country-dialog" aria-label="Close"><svg class="ui-icon" viewBox="0 0 16 16" aria-hidden="true"><path d="M4 4l8 8M12 4 4 12" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/></svg></button>
+            </div>
+            <div class="dialog-body">
+                <label class="field">
+                    <span>Country name <b class="required-mark">*</b></span>
+                    <input id="map-country-name" type="text" placeholder="e.g. Portugal" required>
+                </label>
+                <label class="field" id="slug-field-wrap">
+                    <span>Country slug <b class="required-mark">*</b></span>
+                    <input id="map-slug" type="text" placeholder="e.g. portugal" pattern="[a-z]+(?:-[a-z]+)*" autocapitalize="none" autocomplete="off" spellcheck="false" required>
+                    <small>Lowercase letters and hyphens only. Used in the URL and <code>images/&lt;slug&gt;/</code>.</small>
+                </label>
+                <label class="field">
+                    <span>Public map title</span>
+                    <input id="map-title" type="text" placeholder="Defaults to Hospital Projects in [Country]">
+                </label>
+                <label class="field">
+                    <span>Landing page description</span>
+                    <textarea id="map-description" rows="3"></textarea>
+                </label>
+                <div class="two-columns">
+                    <label class="field">
+                        <span>Logo path</span>
+                        <input id="map-logo" type="text" value="images/logo-02.png">
+                    </label>
+                    <label class="field">
+                        <span>Logo alt text</span>
+                        <input id="map-logo-alt" type="text" value="Saikang Medical Logo">
+                    </label>
+                </div>
+                <div class="color-config">
+                    <div class="color-config-heading">
+                        <div>
+                            <strong>Map colour settings</strong>
+                            <small>The swatch is the exact selected colour; province shades stay in the same colour family.</small>
+                        </div>
+                        <label class="color-wheel-control" title="Open colour picker">
+                            <span>Colour picker</span>
+                            <input id="map-color-picker" type="color" value="#40bfb6">
+                        </label>
+                    </div>
+                    <div id="map-color-preview" class="map-color-preview" aria-label="Map colour preview"></div>
+                    <div class="four-columns">
+                        <label class="field"><span>Hue</span><input id="map-hue" type="number" min="0" max="360" value="175"></label>
+                        <label class="field"><span>Saturation</span><input id="map-sat" type="text" value="50%"></label>
+                        <label class="field"><span>Min light</span><input id="map-min-light" type="number" min="0" max="100" value="75"></label>
+                        <label class="field"><span>Max light</span><input id="map-max-light" type="number" min="0" max="100" value="85"></label>
+                    </div>
+                </div>
+                <label id="new-svg-wrap" class="field">
+                    <span>Country SVG <b class="required-mark">*</b></span>
+                    <input id="map-svg" type="file" accept="image/svg+xml,.svg" required>
+                    <small>Bounds and province IDs are read from this SVG automatically.</small>
+                </label>
+                <div id="country-form-message" class="notice hidden"></div>
+            </div>
+            <div class="dialog-actions">
+                <button type="button" class="button button-secondary" data-close-dialog="country-dialog">Cancel</button>
+                <button id="country-submit" type="submit" class="button button-primary" value="default">Save</button>
+            </div>
+        </form>
+    </dialog>
+
+    <dialog id="validation-dialog" class="dialog dialog-wide issues-dialog">
+        <div class="dialog-heading">
+            <h2 id="validation-dialog-title">Issues</h2>
+            <button class="icon-button" data-close-dialog="validation-dialog" aria-label="Close"><svg class="ui-icon" viewBox="0 0 16 16" aria-hidden="true"><path d="M4 4l8 8M12 4 4 12" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/></svg></button>
+        </div>
+        <div class="dialog-body">
+            <div id="validation-summary"></div>
+            <div id="validation-filters" class="issue-filters hidden" role="group" aria-label="Filter project issues">
+                <button type="button" class="active" data-issue-filter="all">All</button>
+                <button type="button" data-issue-filter="error">Blocking</button>
+                <button type="button" data-issue-filter="warning">Review</button>
+            </div>
+            <div id="validation-results" class="validation-results"></div>
+        </div>
+        <div class="dialog-actions">
+            <button class="button button-primary" data-close-dialog="validation-dialog">Close</button>
+        </div>
+    </dialog>
+
+    <dialog id="save-dialog" class="dialog dialog-wide">
+        <div class="dialog-heading">
+            <h2>Review changes</h2>
+            <button class="icon-button" data-close-dialog="save-dialog" aria-label="Close"><svg class="ui-icon" viewBox="0 0 16 16" aria-hidden="true"><path d="M4 4l8 8M12 4 4 12" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/></svg></button>
+        </div>
+        <div class="dialog-body">
+            <div id="save-validation-note"></div>
+            <pre id="change-summary" class="change-summary"></pre>
+        </div>
+        <div class="dialog-actions">
+            <button class="button button-secondary" data-close-dialog="save-dialog">Cancel</button>
+            <button id="confirm-save" class="button button-primary">Apply changes</button>
+        </div>
+    </dialog>
+
+    <dialog id="unsaved-dialog" class="dialog">
+        <div class="dialog-heading">
+            <h2>Unsaved changes</h2>
+            <button class="icon-button" data-close-dialog="unsaved-dialog" aria-label="Close"><svg class="ui-icon" viewBox="0 0 16 16" aria-hidden="true"><path d="M4 4l8 8M12 4 4 12" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/></svg></button>
+        </div>
+        <div class="dialog-body">
+            <p>You have changes that have not been written to the repository yet.</p>
+            <p class="muted">Save them before switching countries, discard them, or stay here and continue editing.</p>
+        </div>
+        <div class="dialog-actions">
+            <button id="unsaved-stay" class="button button-secondary">Stay here</button>
+            <button id="unsaved-discard" class="button button-danger-ghost">Discard &amp; switch</button>
+            <button id="unsaved-save" class="button button-primary">Review changes</button>
+        </div>
+    </dialog>
+
+    <dialog id="delete-dialog" class="dialog">
+        <div class="dialog-heading">
+            <h2>Delete hotspot</h2>
+            <button class="icon-button" data-close-dialog="delete-dialog" aria-label="Close"><svg class="ui-icon" viewBox="0 0 16 16" aria-hidden="true"><path d="M4 4l8 8M12 4 4 12" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/></svg></button>
+        </div>
+        <div class="dialog-body">
+            <p id="delete-message"></p>
+            <label class="choice-row"><input type="radio" name="delete-mode" value="hotspot" checked> Remove hotspot only</label>
+            <label class="choice-row"><input type="radio" name="delete-mode" value="all"> Remove hotspot and its image files</label>
+        </div>
+        <div class="dialog-actions">
+            <button class="button button-secondary" data-close-dialog="delete-dialog">Cancel</button>
+            <button id="confirm-delete" class="button button-danger">Delete</button>
+        </div>
+    </dialog>
+
+    <dialog id="import-dialog" class="dialog">
+        <div class="dialog-heading">
+            <h2>Import Excel</h2>
+            <button class="icon-button" data-close-dialog="import-dialog" aria-label="Close"><svg class="ui-icon" viewBox="0 0 16 16" aria-hidden="true"><path d="M4 4l8 8M12 4 4 12" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/></svg></button>
+        </div>
+        <div class="dialog-body">
+            <div id="import-summary"></div>
+            <div id="import-plan" class="import-plan"></div>
+            <div id="import-warnings" class="validation-results compact-results"></div>
+        </div>
+        <div class="dialog-actions">
+            <button class="button button-secondary" data-close-dialog="import-dialog">Cancel</button>
+            <button id="confirm-import" class="button button-primary">Import Rows</button>
+        </div>
+    </dialog>
+
+    <dialog id="image-reduce-dialog" class="dialog">
+        <div class="dialog-heading">
+            <h2>Reduce Image Size</h2>
+            <button class="icon-button" data-close-dialog="image-reduce-dialog" aria-label="Close"><svg class="ui-icon" viewBox="0 0 16 16" aria-hidden="true"><path d="M4 4l8 8M12 4 4 12" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/></svg></button>
+        </div>
+        <div class="dialog-body">
+            <div id="image-reduce-summary"></div>
+            <div class="reduction-options">
+                <label class="choice-card" id="lossless-choice">
+                    <input type="radio" name="image-reduce-mode" value="lossless">
+                    <span><strong>Lossless attempt</strong><small>Preserves dimensions and pixels. Available for PNG; used only when it actually makes the file smaller.</small></span>
+                </label>
+                <label class="choice-card">
+                    <input type="radio" name="image-reduce-mode" value="high-quality" checked>
+                    <span><strong>High quality reduction</strong><small>Targets 4 MB. Keeps full dimensions when possible, then reduces quality/size only as much as needed.</small></span>
+                </label>
+            </div>
+            <div id="image-reduce-message" class="notice notice-info"></div>
+        </div>
+        <div class="dialog-actions">
+            <button class="button button-secondary" data-close-dialog="image-reduce-dialog">Cancel</button>
+            <button id="confirm-image-reduce" class="button button-primary">Reduce Image</button>
+        </div>
+    </dialog>
+
+    <dialog id="help-dialog" class="dialog dialog-wide help-dialog">
+        <div class="dialog-heading">
+            <div>
+                <h2>How to use the map manager</h2>
+                <p>Most updates follow the same four-step workflow.</p>
+            </div>
+            <button class="icon-button" data-close-dialog="help-dialog" aria-label="Close"><svg class="ui-icon" viewBox="0 0 16 16" aria-hidden="true"><path d="M4 4l8 8M12 4 4 12" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/></svg></button>
+        </div>
+        <div class="dialog-body help-body">
+            <div class="workflow-steps">
+                <div class="workflow-step"><span>1</span><div><strong>Choose a country</strong><p>Select an existing map on the left, or add a new country with its SVG.</p></div></div>
+                <div class="workflow-step"><span>2</span><div><strong>Add or update hotspots</strong><p>Import the standard Excel file or add a hotspot manually. Review anything shown in yellow or red.</p></div></div>
+                <div class="workflow-step"><span>3</span><div><strong>Add photos and check the map</strong><p>Drop photos onto each hotspot. Use the map editor to confirm marker positions and provinces.</p></div></div>
+                <div class="workflow-step"><span>4</span><div><strong>Check issues, review, then apply</strong><p>Validate the current country as you work, use Issues for the project-wide view, then review and apply the file changes.</p></div></div>
+            </div>
+            <div class="help-grid">
+                <section><h3>Status colours</h3><p><i class="legend-dot ok"></i><strong>Green</strong> - ready.</p><p><i class="legend-dot warning"></i><strong>Yellow</strong> - usable, but worth checking.</p><p><i class="legend-dot error"></i><strong>Red</strong> - fix before applying changes.</p></section>
+                <section><h3>Images</h3><p>Images are never compressed automatically. Files over 4 MB are flagged so you can reduce them individually if useful.</p><p>Use the Used / Unused switch to keep a file in the project without showing it on the public map. Reduced images stay temporary until you apply the final changes.</p></section>
+                <section><h3>Excel imports</h3><p>The manager ignores the Image column and everything after it. Existing matches are merged and their photos are kept.</p><p>An import only stops after five consecutive empty rows.</p></section>
+                <section><h3>Map editor</h3><p>Use + / − or Ctrl + scroll to zoom. Codes show the compact country-map code; Numbers shows the SVG region number/ID. Drag the background to pan or a marker to move it.</p></section>
+            </div>
+            <p class="help-footnote">The full user guide is included at <code>manager/USER_GUIDE.md</code>.</p>
+        </div>
+        <div class="dialog-actions"><button class="button button-primary" data-close-dialog="help-dialog">Got it</button></div>
+    </dialog>
+
+    <div id="toast" class="toast" role="status" aria-live="polite"></div>
+
+    <script src="manager.js?v=20260914-4"></script>
 </body>
 </html>

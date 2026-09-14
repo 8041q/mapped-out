@@ -48,7 +48,7 @@ You can always override the province/state manually if the automatic result is w
 
 ## Using the Map editor
 
-Use the `+` and `−` buttons in the corner to zoom and **Fit** to return to the full country. Drag the map background to pan. The mouse wheel keeps its normal page-scrolling behavior and does not zoom the map. **Region codes** is on by default and overlays the SVG province/state codes as editor-only watermarks; switch it off whenever you want a clean map view.
+Use the `+` and `−` buttons in the corner to zoom and **Fit** to return to the full country. Drag the map background to pan. The mouse wheel keeps its normal page-scrolling behavior and does not zoom the map. The **Labels** control has three modes: **Off**, **Codes** (the full SVG region ID, such as `TH-81`), and **Numbers** (the compact numeric suffix, such as `81`, when the region ID has one). These labels are editor-only watermarks.
 
 Hover a hotspot to see its facility name, city/region when available, and current coordinates. Drag a hotspot to correct its position. The latitude, longitude, SVG position, and detected province are updated together.
 

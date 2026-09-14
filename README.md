@@ -87,9 +87,9 @@ The manager uses three status levels:
 
 | Status | Meaning |
 |---|---|
-| 🟢 **Green — Valid** | Required information is present and no review issue was found. |
-| 🟡 **Yellow — Needs review** | The item can still be saved, but something should be checked. |
-| 🔴 **Red — Invalid** | A required value is missing or invalid. The problem must be fixed before changes can be applied. |
+| 🟢 **Green - Valid** | Required information is present and no review issue was found. |
+| 🟡 **Yellow - Needs review** | The item can still be saved, but something should be checked. |
+| 🔴 **Red - Invalid** | A required value is missing or invalid. The problem must be fixed before changes can be applied. |
 
 Validation checks required fields, coordinates, province/state matching, possible duplicate facilities, image issues, and map consistency. Optional city/region text and physically close facilities are not treated as issues.
 
@@ -153,8 +153,8 @@ Images are never reduced automatically. Reduction only happens when you explicit
 
 Photos can also be marked:
 
-- **Used** — appears in the public hotspot carousel.
-- **Unused** — remains in the project but is hidden from the public map.
+- **Used** - appears in the public hotspot carousel.
+- **Unused** - remains in the project but is hidden from the public map.
 
 When a hotspot has multiple used images, the public map automatically displays them as a carousel.
 
@@ -172,7 +172,7 @@ You can:
 - hover over hotspots to inspect them
 - drag hotspots to correct their location
 
-Moving a hotspot updates its latitude, longitude, SVG position, and detected province/state together. The editor overlays each province/state with its SVG region code so marker placement is easier to verify.
+Moving a hotspot updates its latitude, longitude, SVG position, and detected province/state together. The editor has a **Labels** control with **Off / Codes / Numbers** modes. **Codes** shows the full stable SVG region ID (for example `TH-81`); **Numbers** shows the compact numeric suffix when one exists (for example `81`).
 
 **Reset selected** restores only the selected hotspot's geographic position and province/state to its editing baseline. Text and image changes are not removed.
 

@@ -26,6 +26,32 @@ const IMAGE_HIGH_QUALITY_MIN = 0.78;
 const IMAGE_MIN_LONG_EDGE = 1600;
 const OVERSIZED_IMAGE_BYTES = PREFERRED_MAX_IMAGE_BYTES;
 
+// Human-facing map abbreviations are intentionally separate from raw SVG region IDs.
+// Uploaded SVGs can provide data-code/data-abbr/data-label on each region. When they do
+// not, alphabetic suffixes such as PH-NEC are safe to use. Thailand's ISO subdivision
+// IDs are numeric, so the current Thailand map uses a curated short-code table instead
+// of displaying 10/14/etc. as if those were alphabetic province abbreviations.
+const REGION_CODE_OVERRIDES = {
+    thailand: {
+        'TH-10': 'BKK', 'TH-11': 'SPK', 'TH-12': 'NBI', 'TH-13': 'PTE', 'TH-14': 'AYA',
+        'TH-15': 'ATG', 'TH-16': 'LRI', 'TH-17': 'SBR', 'TH-18': 'CNT', 'TH-19': 'SRB',
+        'TH-20': 'CBI', 'TH-21': 'RYG', 'TH-22': 'CTI', 'TH-23': 'TRT', 'TH-24': 'CCO',
+        'TH-25': 'PRI', 'TH-26': 'NYK', 'TH-27': 'SKW', 'TH-30': 'NMA', 'TH-31': 'BRM',
+        'TH-32': 'SRN', 'TH-33': 'SSK', 'TH-34': 'UBN', 'TH-35': 'YST', 'TH-36': 'CPM',
+        'TH-37': 'ACR', 'TH-38': 'BKN', 'TH-39': 'NBP', 'TH-40': 'KKN', 'TH-41': 'UDN',
+        'TH-42': 'LEI', 'TH-43': 'NKI', 'TH-44': 'MKM', 'TH-45': 'RET', 'TH-46': 'KSN',
+        'TH-47': 'SNK', 'TH-48': 'NPM', 'TH-49': 'MDH', 'TH-50': 'CMI', 'TH-51': 'LPN',
+        'TH-52': 'LPG', 'TH-53': 'UTD', 'TH-54': 'PRE', 'TH-55': 'NAN', 'TH-56': 'PYO',
+        'TH-57': 'CRI', 'TH-58': 'MSN', 'TH-60': 'NSN', 'TH-61': 'UTI', 'TH-62': 'KPT',
+        'TH-63': 'TAK', 'TH-64': 'STI', 'TH-65': 'PLK', 'TH-66': 'PCT', 'TH-67': 'PNB',
+        'TH-70': 'RBR', 'TH-71': 'KRI', 'TH-72': 'SPB', 'TH-73': 'NPT', 'TH-74': 'SKN',
+        'TH-75': 'SKM', 'TH-76': 'PBI', 'TH-77': 'PKN', 'TH-80': 'NRT', 'TH-81': 'KBI',
+        'TH-82': 'PNA', 'TH-83': 'PKT', 'TH-84': 'SRT', 'TH-85': 'RNG', 'TH-86': 'CPN',
+        'TH-90': 'SKA', 'TH-91': 'STN', 'TH-92': 'TRG', 'TH-93': 'PLG', 'TH-94': 'PTN',
+        'TH-95': 'YLA', 'TH-96': 'NWT', 'TH-S': 'PTY',
+    },
+};
+
 const state = {
     repositoryReady: false,
     repositoryName: '',
@@ -80,7 +106,7 @@ function cacheElements() {
         'editor-empty', 'hotspot-editor', 'hotspot-status-badge', 'delete-hotspot', 'field-title',
         'field-city', 'field-year', 'field-address', 'field-description', 'field-lat', 'field-lon',
         'field-province', 'field-xy', 'coordinate-message', 'apply-swap', 'image-picker',
-        'image-dropzone', 'image-list', 'map-stage', 'map-preview', 'map-zoom-in', 'map-zoom-out', 'map-zoom-reset', 'map-label-toggle', 'hotspot-hover-card', 'reset-position', 'svg-picker', 'excel-picker',
+        'image-dropzone', 'image-list', 'map-stage', 'map-preview', 'map-zoom-in', 'map-zoom-out', 'map-zoom-reset', 'map-label-mode', 'hotspot-hover-card', 'reset-position', 'svg-picker', 'excel-picker',
         'country-dialog', 'country-form', 'country-dialog-title', 'slug-field-wrap', 'map-country-name', 'map-slug',
         'map-title', 'map-description', 'map-logo', 'map-logo-alt', 'map-hue', 'map-sat',
         'map-min-light', 'map-max-light', 'map-color-picker', 'map-color-preview', 'new-svg-wrap', 'map-svg', 'country-form-message',
@@ -105,7 +131,7 @@ function enforceCountrySlugInput() {
 function setIssuesButtonState(level, count, title) {
     if (!els.validateAll || !els.issuesIndicator || !els.issuesCount) return;
     els.issuesIndicator.className = `status-dot ${level || 'neutral'}`;
-    els.issuesCount.textContent = String(count ?? '—');
+    els.issuesCount.textContent = String(count ?? '-');
     els.validateAll.title = title || 'Project issues';
 }
 
@@ -168,7 +194,7 @@ function bindEvents() {
         els[key].addEventListener('input', updateColorPreviewFromFields);
     });
     els.mapColorPicker.addEventListener('input', applyColorPickerToFields);
-    els.mapLabelToggle.addEventListener('change', updateRegionLabelVisibility);
+    bindRegionLabelMode();
     els.mapSlug.addEventListener('input', enforceCountrySlugInput);
     els.mapZoomIn.addEventListener('click', () => zoomPreview(0.72));
     els.mapZoomOut.addEventListener('click', () => zoomPreview(1.38));
@@ -614,11 +640,13 @@ async function performCountrySelection(slug) {
     try {
         await ensureSvgLoaded(slug);
         backfillGeographicCoordinates(slug);
+        // Render the map first so province/position mismatches are known before the list,
+        // editor badge and country health summary calculate their status colours.
+        renderMapPreview();
         renderCountryHealth();
         renderImportHistory();
         renderHotspotList();
         renderEditor();
-        renderMapPreview();
     } catch (error) {
         console.error(error);
         els.mapPreview.innerHTML = `<div class="notice notice-error">${escapeHtml(error.message)}</div>`;
@@ -870,7 +898,7 @@ function applyBulkProvince() {
         if (!h) return;
         h.provinceId = provinceId;
         h._provinceOverride = true;
-        h._provinceMismatch = '';
+        refreshProvinceMismatch(h);
         if (!allManagedImages(h).length) h._assetFolder = generatedFacilityFolder(h, state.activeSlug);
     });
     markDirty();
@@ -1012,11 +1040,68 @@ function renderEditor() {
         ? `x ${formatNumber(h.x, 3)} · y ${formatNumber(h.y, 3)}` : '-';
 
     renderProvinceOptions(h.provinceId || '');
-    const status = hotspotValidationStatus(state.activeSlug, h, state.activeHotspotIndex);
-    els.hotspotStatusBadge.textContent = status.label;
-    els.hotspotStatusBadge.className = `status-badge ${status.level}`;
     renderCoordinateMessage(h);
     renderImagesList();
+    refreshHotspotReviewState(h);
+}
+
+function refreshHotspotReviewState(h = activeHotspot()) {
+    if (!h || !els.hotspotStatusBadge) return;
+    const issues = validateHotspot(state.activeSlug, h, { index: state.activeHotspotIndex });
+    const actionable = issues.filter(issue => issue.level === 'error' || issue.level === 'warning');
+    const status = hotspotValidationStatus(state.activeSlug, h, state.activeHotspotIndex);
+    els.hotspotStatusBadge.textContent = status.level === 'ok' ? status.label : `${status.label} · ${actionable.length}`;
+    els.hotspotStatusBadge.className = `status-badge ${status.level}`;
+    els.hotspotStatusBadge.title = actionable.map(issue => issue.text).join('\n');
+    renderHotspotReviewTargets(actionable);
+}
+
+function renderHotspotReviewTargets(issues = []) {
+    if (!els.hotspotEditor) return;
+    els.hotspotEditor.querySelectorAll('[data-hotspot-review-badge]').forEach(node => node.remove());
+    els.hotspotEditor.querySelectorAll('.has-review-target').forEach(node => node.classList.remove('has-review-target'));
+
+    const anchors = {
+        title: els.fieldTitle?.closest('.field')?.querySelector(':scope > span'),
+        coordinates: els.hotspotEditor.querySelector('.coordinate-heading strong'),
+        province: els.fieldProvince?.closest('.field')?.querySelector(':scope > span'),
+        images: els.hotspotEditor.querySelector('.images-heading strong'),
+        general: els.hotspotStatusBadge?.parentElement,
+    };
+
+    const grouped = new Map();
+    issues.forEach(issue => {
+        const target = issue.target || 'general';
+        if (!grouped.has(target)) grouped.set(target, []);
+        grouped.get(target).push(issue);
+    });
+
+    grouped.forEach((targetIssues, target) => {
+        const anchor = anchors[target] || anchors.general;
+        if (!anchor) return;
+        const hasError = targetIssues.some(issue => issue.level === 'error');
+        const badge = document.createElement('span');
+        const badgeText = hotspotReviewBadgeText(target, targetIssues, hasError);
+        badge.dataset.hotspotReviewBadge = target;
+        badge.className = `field-review-badge ${hasError ? 'error' : 'warning'}`;
+        badge.textContent = badgeText;
+        badge.title = targetIssues.map(issue => issue.text).join('\n');
+        badge.setAttribute('aria-label', `${badgeText}: ${targetIssues.map(issue => issue.text).join(' ')}`);
+        anchor.appendChild(badge);
+        (anchor.closest('.field, .coordinate-card, .images-section, .editor-heading') || anchor).classList.add('has-review-target');
+    });
+}
+
+function hotspotReviewBadgeText(target, issues, hasError) {
+    const text = issues.map(issue => issue.text).join(' ').toLowerCase();
+    if (target === 'province' && /coordinates (fall|do not fall)/.test(text)) return 'Mismatch';
+    if (target === 'images' && /no images/.test(text)) return 'No images';
+    if (target === 'images' && /preferred max/.test(text)) return 'Large image';
+    if (target === 'title' && /possible duplicate/.test(text)) return 'Duplicate?';
+    if (target === 'general' && /excel match/.test(text)) return 'Review import';
+    if (hasError && /(required|missing)/.test(text)) return 'Required';
+    if (target === 'coordinates') return hasError ? 'Fix' : 'Check';
+    return hasError ? 'Fix' : 'Review';
 }
 
 function renderProvinceOptions(selectedId) {
@@ -1061,6 +1146,7 @@ function syncEditorTextFields() {
     if (!h.country) h.country = countryNameFromEntry(activeEntry());
     if (!h._assetFolder || !allManagedImages(h).length) h._assetFolder = generatedFacilityFolder(h, state.activeSlug);
     markDirty();
+    refreshHotspotReviewState(h);
     renderHotspotList();
     renderCountryHealth();
     renderCountries();
@@ -1078,9 +1164,11 @@ function syncCoordinateFields() {
             const xy = latLonToXY(h.lat, h.lon, meta.bounds, meta.viewBox);
             h.x = xy.x;
             h.y = xy.y;
-            h.provinceId = detectProvinceAtXY(xy.x, xy.y) || h.provinceId || '';
+            const detectedProvince = detectProvinceAtXY(xy.x, xy.y);
+            if (!h.provinceId) h.provinceId = detectedProvince || '';
             h._positionSource = 'coordinates';
-            h._provinceMismatch = '';
+            h._provinceOverride = Boolean(h.provinceId);
+            refreshProvinceMismatch(h, detectedProvince);
             if (!allManagedImages(h).length) h._assetFolder = generatedFacilityFolder(h, state.activeSlug);
         }
     }
@@ -1097,9 +1185,10 @@ function syncProvinceField() {
     if (!h) return;
     h.provinceId = els.fieldProvince.value;
     h._provinceOverride = true;
-    h._provinceMismatch = '';
+    refreshProvinceMismatch(h);
     if (!allManagedImages(h).length) h._assetFolder = generatedFacilityFolder(h, state.activeSlug);
     markDirty();
+    refreshHotspotReviewState(h);
     renderHotspotList();
     renderCountryHealth();
     renderCountries();
@@ -1114,7 +1203,8 @@ function applySuggestedSwap() {
     const oldLat = h.lat;
     h.lat = h.lon;
     h.lon = oldLat;
-    syncHotspotFromCoordinates(h, { redetectProvince: true });
+    syncHotspotFromCoordinates(h, { redetectProvince: false });
+    refreshProvinceMismatch(h);
     h._coordinateSwapAccepted = true;
     markDirty();
     renderEditor();
@@ -1206,7 +1296,11 @@ function parseSvgMetadata(source) {
 
     const regionNodes = Array.from(doc.querySelectorAll('path[id], polygon[id], polyline[id], rect[id], circle[id], ellipse[id]'));
     const regions = regionNodes
-        .map(node => ({ id: node.id.trim(), name: (node.getAttribute('data-name') || node.getAttribute('title') || node.id).trim() }))
+        .map(node => ({
+            id: node.id.trim(),
+            name: (node.getAttribute('data-name') || node.getAttribute('title') || node.querySelector(':scope > title')?.textContent || node.id).trim(),
+            code: (node.getAttribute('data-code') || node.getAttribute('data-abbr') || node.getAttribute('data-label') || '').trim(),
+        }))
         .filter(region => region.id && region.id !== 'hotspots-layer');
 
     return {
@@ -1276,9 +1370,12 @@ function syncHotspotFromCoordinates(h, { redetectProvince = false } = {}) {
     const xy = latLonToXY(h.lat, h.lon, meta.bounds, meta.viewBox);
     h.x = xy.x;
     h.y = xy.y;
-    if (redetectProvince || !h.provinceId || !h._provinceOverride) {
-        h.provinceId = detectProvinceAtXY(xy.x, xy.y) || h.provinceId || '';
+    const detectedProvince = detectProvinceAtXY(xy.x, xy.y);
+    if (redetectProvince || !h.provinceId) {
+        h.provinceId = detectedProvince || h.provinceId || '';
     }
+    h._provinceOverride = Boolean(h.provinceId);
+    refreshProvinceMismatch(h, detectedProvince);
     if (!allManagedImages(h).length) h._assetFolder = generatedFacilityFolder(h, state.activeSlug);
 }
 
@@ -1333,13 +1430,46 @@ function applyPreviewMapColors(svg, entry) {
     });
 }
 
+const REGION_LABEL_MODE_KEY = 'mapped-out-region-label-mode';
+
+function currentRegionLabelMode() {
+    const pressed = els.mapLabelMode?.querySelector('[data-region-label-mode][aria-pressed="true"]');
+    return pressed?.dataset.regionLabelMode || 'codes';
+}
+
+function bindRegionLabelMode() {
+    if (!els.mapLabelMode) return;
+    const allowed = new Set(['off', 'codes', 'numbers']);
+    let saved = 'codes';
+    try {
+        const stored = localStorage.getItem(REGION_LABEL_MODE_KEY);
+        if (allowed.has(stored)) saved = stored;
+    } catch (_) {}
+    setRegionLabelMode(saved, { persist: false, rerender: false });
+    els.mapLabelMode.querySelectorAll('[data-region-label-mode]').forEach(button => {
+        button.addEventListener('click', () => setRegionLabelMode(button.dataset.regionLabelMode));
+    });
+}
+
+function setRegionLabelMode(mode, { persist = true, rerender = true } = {}) {
+    const normalized = ['off', 'codes', 'numbers'].includes(mode) ? mode : 'codes';
+    els.mapLabelMode?.querySelectorAll('[data-region-label-mode]').forEach(button => {
+        button.setAttribute('aria-pressed', button.dataset.regionLabelMode === normalized ? 'true' : 'false');
+    });
+    if (persist) {
+        try { localStorage.setItem(REGION_LABEL_MODE_KEY, normalized); } catch (_) {}
+    }
+    if (rerender) renderRegionLabels();
+}
+
 function renderRegionLabels(svg = previewSvg()) {
     const meta = state.svgMeta.get(state.activeSlug);
     if (!svg || !meta) return;
     svg.querySelector('#manager-region-label-layer')?.remove();
+    const mode = currentRegionLabelMode();
+    if (mode === 'off') return;
     const layer = document.createElementNS('http://www.w3.org/2000/svg', 'g');
     layer.id = 'manager-region-label-layer';
-    layer.classList.toggle('hidden', els.mapLabelToggle && !els.mapLabelToggle.checked);
     layer.setAttribute('aria-hidden', 'true');
     const shortSide = Math.min(meta.viewBox.width, meta.viewBox.height);
     meta.regions.forEach(region => {
@@ -1351,25 +1481,62 @@ function renderRegionLabels(svg = previewSvg()) {
         const text = document.createElementNS('http://www.w3.org/2000/svg', 'text');
         text.setAttribute('x', round(box.x + box.width / 2, 3));
         text.setAttribute('y', round(box.y + box.height / 2, 3));
+        const label = regionLabelText(region, mode, state.activeSlug);
+        if (!label) return;
         const localSize = Math.min(box.width, box.height) * 0.28;
-        const fontSize = clamp(localSize, shortSide / 180, shortSide / 48);
+        const readableFloor = shortSide / 88;
+        const baseFontSize = clamp(localSize, readableFloor, shortSide / 46);
+        const labelScale = clamp(4 / Math.max(3, label.length), 0.82, 1);
+        const fontSize = Math.max(readableFloor * 0.92, baseFontSize * labelScale);
         text.setAttribute('font-size', round(fontSize, 3));
         text.setAttribute('class', 'manager-region-label');
-        text.textContent = regionCodeLabel(region.id);
+        text.textContent = label;
         layer.appendChild(text);
     });
-    svg.appendChild(layer);
+
+    // Region text must always stay visually behind hotspot markers. Toggling the label mode
+    // used to append this layer after the markers, which could make labels cover hotspots.
+    const markerLayer = svg.querySelector('#manager-hotspot-layer');
+    if (markerLayer) svg.insertBefore(layer, markerLayer);
+    else svg.appendChild(layer);
 }
 
-function updateRegionLabelVisibility() {
-    const layer = previewSvg()?.querySelector('#manager-region-label-layer');
-    if (layer) layer.classList.toggle('hidden', !els.mapLabelToggle.checked);
+function regionLabelText(region, mode = 'codes', slug = state.activeSlug) {
+    const id = String(region?.id || region || '').trim().toUpperCase();
+    if (!id) return '';
+    if (mode === 'numbers') return id;
+
+    const explicit = String(region?.code || '').trim().toUpperCase();
+    if (explicit) return explicit;
+
+    const override = REGION_CODE_OVERRIDES[String(slug || '').toLowerCase()]?.[id];
+    if (override) return override;
+
+    // Treat both '-' and '_' as region separators. This fixes SVGs such as PH_MG while
+    // preserving normal ISO-style IDs such as PH-NEC.
+    const parts = id.split(/[-_]/).filter(Boolean);
+    const suffix = parts.length > 1 ? parts[parts.length - 1] : id;
+    if (/[A-Z]/.test(suffix)) return suffix;
+
+    // A numeric suffix is a valid raw subdivision ID (Thailand is a good example), but it is
+    // not useful as a human-facing abbreviation. Use a deterministic name abbreviation unless
+    // the SVG supplies data-code/data-abbr or a curated mapping exists.
+    return deriveRegionAbbreviation(region?.name || id);
 }
 
-function regionCodeLabel(regionId) {
-    const id = String(regionId || '').trim();
-    const parts = id.split('-').filter(Boolean);
-    return (parts.length > 1 ? parts[parts.length - 1] : id).toUpperCase();
+function deriveRegionAbbreviation(name) {
+    const words = String(name || '')
+        .normalize('NFKD')
+        .replace(/[\u0300-\u036f]/g, '')
+        .toUpperCase()
+        .replace(/[^A-Z0-9 ]+/g, ' ')
+        .split(/\s+/)
+        .filter(Boolean)
+        .filter(word => !['PROVINCE', 'STATE', 'REGION', 'DISTRICT', 'ADMINISTRATION'].includes(word));
+    if (!words.length) return '';
+    if (words.length >= 3) return words.slice(0, 3).map(word => word[0]).join('');
+    if (words.length === 2) return `${words[0].slice(0, 2)}${words[1][0]}`.slice(0, 3);
+    return words[0].slice(0, 3);
 }
 
 function cssEscape(value) {
@@ -1433,8 +1600,18 @@ function clampPreviewView(view) {
 function initializeMapNavigation(svg) {
     svg.classList.add('manager-map-svg');
 
-    // Mouse-wheel zoom is intentionally disabled. The wheel should keep its normal browser
-    // behaviour (page scrolling); zooming the editor is available only through the + / − buttons.
+    // Keep ordinary wheel gestures available for page scrolling. Ctrl + wheel is reserved for
+    // editor zoom and anchors the zoom at the pointer, matching the + / − controls without
+    // hijacking normal scrolling through the manager.
+    svg.addEventListener('wheel', event => {
+        if (!event.ctrlKey || !state.previewView) return;
+        event.preventDefault();
+        event.stopPropagation();
+        const anchor = clientToSvg(svg, event.clientX, event.clientY);
+        const factor = clamp(Math.exp(event.deltaY * 0.0018), 0.72, 1.38);
+        zoomPreview(factor, anchor);
+    }, { passive: false });
+
     svg.addEventListener('pointerdown', event => {
         if (event.button !== 0 && event.pointerType === 'mouse') return;
         if (event.target.closest?.('#manager-hotspot-layer')) return;
@@ -1478,28 +1655,30 @@ function updatePreviewMarkers() {
     layer.id = 'manager-hotspot-layer';
     svg.appendChild(layer);
 
-    // Keep markers clearly visible even on tall/narrow country maps. The transparent hit
-    // circle is much larger than the visible marker, making mouse/touch dragging forgiving.
+    // Keep markers clearly visible even on tall/narrow country maps. The interaction area
+    // deliberately matches the visible marker so nearby hotspots never steal each other's clicks.
     const shortSide = Math.min(meta.viewBox.width, meta.viewBox.height);
     const radius = Math.max(shortSide / 75, 4);
 
     entry.hotspots.forEach((h, index) => {
         if (!Number.isFinite(Number(h.x)) || !Number.isFinite(Number(h.y))) return;
+        refreshProvinceMismatch(h);
         const status = hotspotValidationStatus(state.activeSlug, h, index);
         const group = document.createElementNS('http://www.w3.org/2000/svg', 'g');
         group.dataset.index = String(index);
 
         const selected = index === state.mapHotspotIndex;
+        const markerRadius = selected ? radius * 1.28 : radius;
         const circle = document.createElementNS('http://www.w3.org/2000/svg', 'circle');
         circle.setAttribute('cx', h.x);
         circle.setAttribute('cy', h.y);
-        circle.setAttribute('r', selected ? radius * 1.28 : radius);
+        circle.setAttribute('r', markerRadius);
         circle.setAttribute('class', `manager-hotspot-marker ${status.level}${selected ? ' selected' : ''}`);
 
         const hit = document.createElementNS('http://www.w3.org/2000/svg', 'circle');
         hit.setAttribute('cx', h.x);
         hit.setAttribute('cy', h.y);
-        hit.setAttribute('r', radius * 2.6);
+        hit.setAttribute('r', markerRadius);
         hit.setAttribute('class', 'manager-hotspot-hit');
         hit.dataset.index = String(index);
         hit.addEventListener('pointerdown', beginMarkerDrag);
@@ -1665,6 +1844,14 @@ function beginMarkerDrag(event) {
         marker.setAttribute('cy', finalY);
         hit.setAttribute('cx', finalX);
         hit.setAttribute('cy', finalY);
+
+        const detectedProvince = detectProvinceAtXY(finalX, finalY);
+        const priorMismatch = h._provinceMismatch;
+        refreshProvinceMismatch(h, detectedProvince);
+        const dragStatus = hotspotValidationStatus(state.activeSlug, h, index);
+        marker.classList.remove('ok', 'warning', 'error');
+        marker.classList.add(dragStatus.level);
+        h._provinceMismatch = priorMismatch;
     };
 
     const finish = upEvent => {
@@ -1682,10 +1869,11 @@ function beginMarkerDrag(event) {
             const ll = xyToLatLon(h.x, h.y, meta.bounds, meta.viewBox);
             h.lat = ll.lat;
             h.lon = ll.lon;
-            h.provinceId = detectProvinceAtXY(h.x, h.y) || '';
+            const detectedProvince = detectProvinceAtXY(h.x, h.y);
+            if (!h.provinceId) h.provinceId = detectedProvince || '';
             h._positionSource = 'manual-drag';
-            h._provinceOverride = false;
-            h._provinceMismatch = '';
+            h._provinceOverride = Boolean(h.provinceId);
+            refreshProvinceMismatch(h, detectedProvince);
             if (!allManagedImages(h).length) h._assetFolder = generatedFacilityFolder(h, state.activeSlug);
             hit.dataset.suppressClick = '1';
         }
@@ -1795,8 +1983,8 @@ function resetSelectedHotspot() {
     h.x = baseline.x;
     h.y = baseline.y;
     h.provinceId = baseline.provinceId || detectProvinceAtXY(baseline.x, baseline.y) || '';
-    h._provinceOverride = Boolean(baseline.provinceOverride);
-    h._provinceMismatch = '';
+    h._provinceOverride = Boolean(h.provinceId);
+    refreshProvinceMismatch(h);
     h._positionSource = 'reset';
 
     markDirty();
@@ -1830,9 +2018,10 @@ async function handleSvgReplacement(event) {
         renderMapPreview();
         await nextFrame();
         entry.hotspots.forEach(h => {
-            h.provinceId = detectProvinceAtXY(h.x, h.y) || h.provinceId || '';
-            h._provinceOverride = false;
-            h._provinceMismatch = '';
+            const detectedProvince = detectProvinceAtXY(h.x, h.y);
+            if (!h.provinceId) h.provinceId = detectedProvince || '';
+            h._provinceOverride = Boolean(h.provinceId);
+            refreshProvinceMismatch(h, detectedProvince);
         });
         renderEditor();
         renderHotspotList();
@@ -2310,7 +2499,7 @@ async function confirmExcelImport() {
         }
 
         const coordinate = validateCoordinates(state.activeSlug, hotspot.lat, hotspot.lon);
-        if (coordinate.level !== 'error') syncHotspotFromCoordinates(hotspot, { redetectProvince: true });
+        if (coordinate.level !== 'error') syncHotspotFromCoordinates(hotspot, { redetectProvince: !hotspot.provinceId });
         if (!allManagedImages(hotspot).length) hotspot._assetFolder = generatedFacilityFolder(hotspot, state.activeSlug);
         if (!hotspot._baselinePosition) captureHotspotBaseline(hotspot);
         hotspot._importedFromExcel = true;
@@ -2340,8 +2529,11 @@ async function confirmExcelImport() {
     await nextFrame();
     entry.hotspots.forEach(h => {
         const coordinate = validateCoordinates(state.activeSlug, h.lat, h.lon);
-        if (coordinate.level !== 'error' && Number.isFinite(Number(h.x)) && Number.isFinite(Number(h.y)) && !h._provinceOverride) {
-            h.provinceId = detectProvinceAtXY(h.x, h.y) || h.provinceId || '';
+        if (coordinate.level !== 'error' && Number.isFinite(Number(h.x)) && Number.isFinite(Number(h.y))) {
+            const detectedProvince = detectProvinceAtXY(h.x, h.y);
+            if (!h.provinceId) h.provinceId = detectedProvince || '';
+            h._provinceOverride = Boolean(h.provinceId);
+            refreshProvinceMismatch(h, detectedProvince);
         }
     });
     renderHotspotList();
@@ -2550,39 +2742,53 @@ function hotspotValidationStatus(slug, h, index = null) {
     return { level: 'ok', label: 'Valid' };
 }
 
+const OUTSIDE_ASSIGNED_REGION = '__outside_assigned_region__';
+
+function refreshProvinceMismatch(h, detectedProvince = undefined) {
+    if (!h || !h.provinceId || !Number.isFinite(Number(h.x)) || !Number.isFinite(Number(h.y))) {
+        if (h) h._provinceMismatch = '';
+        return '';
+    }
+    const detected = detectedProvince === undefined ? detectProvinceAtXY(h.x, h.y) : detectedProvince;
+    h._provinceMismatch = detected === h.provinceId ? '' : (detected || OUTSIDE_ASSIGNED_REGION);
+    return h._provinceMismatch;
+}
+
 function provinceDisplayName(slug, provinceId) {
     const id = String(provinceId || '').trim();
     if (!id) return 'unassigned';
+    if (id === OUTSIDE_ASSIGNED_REGION) return 'outside any province/state';
     const region = state.svgMeta.get(slug)?.regions?.find(item => item.id === id);
     return region?.name && region.name !== id ? `${region.name} (${id})` : id;
 }
 
 function provinceMismatchText(slug, h) {
-    const detected = provinceDisplayName(slug, h._provinceMismatch);
     const assigned = provinceDisplayName(slug, h.provinceId);
+    if (h._provinceMismatch === OUTSIDE_ASSIGNED_REGION) return `Coordinates do not fall inside assigned ${assigned}.`;
+    const detected = provinceDisplayName(slug, h._provinceMismatch);
     return `Coordinates fall in ${detected}; assigned to ${assigned}.`;
 }
 
 function validateHotspot(slug, h, { index = null } = {}) {
     const issues = [];
-    if (!String(h.title || '').trim()) issues.push({ level: 'error', text: 'Facility name is missing.' });
+    if (!String(h.title || '').trim()) issues.push({ level: 'error', target: 'title', text: 'Facility name is missing.' });
     const coordinate = validateCoordinates(slug, h.lat, h.lon);
-    if (coordinate.level !== 'ok') issues.push({ level: coordinate.level, text: coordinate.message });
-    if (!Number.isFinite(Number(h.x)) || !Number.isFinite(Number(h.y))) issues.push({ level: 'error', text: 'Map position is missing.' });
+    if (coordinate.level !== 'ok') issues.push({ level: coordinate.level, target: 'coordinates', text: coordinate.message });
+    if (!Number.isFinite(Number(h.x)) || !Number.isFinite(Number(h.y))) issues.push({ level: 'error', target: 'coordinates', text: 'Map position is missing.' });
     const meta = state.svgMeta.get(slug);
-    if (!h.provinceId) issues.push({ level: 'error', text: 'Province/state is required.' });
-    else if (meta && !meta.regions.some(r => r.id === h.provinceId)) issues.push({ level: 'error', text: `Province/state ${h.provinceId} is not in the current SVG.` });
+    if (!h.provinceId) issues.push({ level: 'error', target: 'province', text: 'Province/state is required.' });
+    else if (meta && !meta.regions.some(r => r.id === h.provinceId)) issues.push({ level: 'error', target: 'province', text: `Province/state ${h.provinceId} is not in the current SVG.` });
 
-    if (!h.images?.length) issues.push({ level: 'warning', text: h.inactiveImages?.length ? 'No images are enabled for the public map.' : 'No images added.' });
-    if (h._importConflict) issues.push({ level: 'warning', text: 'Excel match was resolved manually.' });
-    if (h._provinceMismatch) issues.push({ level: 'warning', text: provinceMismatchText(slug, h) });
+    if (!h.images?.length) issues.push({ level: 'warning', target: 'images', text: h.inactiveImages?.length ? 'No images are enabled for the public map.' : 'No images added.' });
+    if (h._importConflict) issues.push({ level: 'warning', target: 'general', text: 'Excel match was resolved manually.' });
+    if (h._provinceMismatch) issues.push({ level: 'warning', target: 'province', text: provinceMismatchText(slug, h) });
 
     for (const path of h.images || []) {
         const stat = state.fileStats.get(path);
         const optimized = state.imageOptimizationMeta.get(path);
         const size = optimized?.finalBytes ?? stat?.size;
         if (Number.isFinite(size) && size > OVERSIZED_IMAGE_BYTES) {
-            issues.push({ level: 'warning', text: `${path.split('/').pop()} is ${formatBytes(size)}; preferred max is 4 MB.` });
+            issues.push({ level: 'warning', target: 'images', text: `${path.split('/').pop()} is ${formatBytes(size)}; preferred max is 4 MB.` });
         }
     }
 
@@ -2594,7 +2800,7 @@ function validateHotspot(slug, h, { index = null } = {}) {
             const sameCity = normalizedText(other.city) && normalizedText(other.city) === normalizedText(h.city);
             if (sameName && (sameCity || !normalizedText(h.city) || !normalizedText(other.city))) {
                 const names = [h.title || `Hotspot ${index + 1}`, other.title || `Hotspot ${otherIndex + 1}`].sort((a, b) => a.localeCompare(b));
-                issues.push({ level: 'warning', text: `Possible duplicate: “${names[0]}” / “${names[1]}”.` });
+                issues.push({ level: 'warning', target: 'title', text: `Possible duplicate: “${names[0]}” / “${names[1]}”.` });
             }
         });
     }
@@ -2652,8 +2858,7 @@ async function validateCountryDeep(slug) {
 
     entry.hotspots.forEach(h => {
         if (Number.isFinite(Number(h.x)) && Number.isFinite(Number(h.y)) && h.provinceId) {
-            const detected = detectProvinceAtXY(h.x, h.y);
-            h._provinceMismatch = detected && detected !== h.provinceId ? detected : '';
+            refreshProvinceMismatch(h);
         }
     });
 
@@ -2665,9 +2870,9 @@ async function validateCountryDeep(slug) {
             referencedImages.get(path).push(`${h.title || `Hotspot ${index + 1}`}${isInactive ? ' (unused)' : ''}`);
             const stat = state.fileStats.get(path);
             if (state.stagedDeletes.has(path)) {
-                issues.push({ level: 'error', hotspotIndex: index, text: `${h.title || `Hotspot ${index + 1}`}: image staged for deletion — ${path.split('/').pop()}.` });
+                issues.push({ level: 'error', hotspotIndex: index, text: `${h.title || `Hotspot ${index + 1}`}: image staged for deletion - ${path.split('/').pop()}.` });
             } else if (stat && stat.exists === false && !state.stagedWrites.has(path)) {
-                issues.push({ level: 'error', hotspotIndex: index, text: `${h.title || `Hotspot ${index + 1}`}: missing image — ${path.split('/').pop()}.` });
+                issues.push({ level: 'error', hotspotIndex: index, text: `${h.title || `Hotspot ${index + 1}`}: missing image - ${path.split('/').pop()}.` });
             } else if (!isInactive && Number.isFinite(stat?.size) && stat.size > OVERSIZED_IMAGE_BYTES) {
                 issues.push({ level: 'warning', hotspotIndex: index, text: `${h.title || `Hotspot ${index + 1}`}: ${path.split('/').pop()} is ${formatBytes(stat.size)} (over 4 MB).` });
             }
@@ -2974,6 +3179,7 @@ async function addImagesToSelected(files) {
     if (!added) return;
     markDirty();
     await renderImagesList();
+    refreshHotspotReviewState(h);
     renderHotspotList();
     renderCountryHealth();
     renderCountries();
@@ -3180,6 +3386,7 @@ async function confirmImageReduction() {
         await applyImageReduction(path, mode);
         els.imageReduceDialog.close();
         await renderImagesList();
+        refreshHotspotReviewState();
         renderHotspotList();
         renderCountryHealth();
         renderCountries();
@@ -3213,10 +3420,12 @@ async function renderImagesList() {
         img.className = 'image-thumb';
         img.alt = '';
         const text = document.createElement('div');
+        text.className = 'image-copy';
         const strong = document.createElement('strong');
         strong.textContent = path.split('/').pop();
         const small = document.createElement('small');
-        small.textContent = path;
+        small.className = 'image-details';
+        renderImageDetails(small, path);
         text.append(strong, small);
 
         const actions = document.createElement('div');
@@ -3234,7 +3443,7 @@ async function renderImagesList() {
         const useLabel = document.createElement('span');
         useLabel.className = 'image-use-label';
         useLabel.textContent = used ? 'Used' : 'Unused';
-        useInput.addEventListener('change', () => toggleImageUsage(path, useInput.checked));
+        useInput.addEventListener('change', () => { useInput.blur(); toggleImageUsage(path, useInput.checked); });
         useToggle.append(useInput, useSwitch, useLabel);
 
         const reduceButton = imageActionButton('Reduce', 'Reduce file size', () => openImageReduceDialog(path), false);
@@ -3251,22 +3460,54 @@ async function renderImagesList() {
         getObjectUrlForPath(path).then(url => { if (url) img.src = url; }).catch(() => {});
         const opt = state.imageOptimizationMeta.get(path);
         if (opt) {
-            small.textContent = `${path} · ${formatBytes(opt.finalBytes)}`;
-            if (opt.optimized) {
-                const badge = document.createElement('span');
-                badge.className = 'optimized-badge';
-                badge.textContent = `${opt.mode === 'lossless' ? 'lossless' : 'reduced'} from ${formatBytes(opt.originalBytes)}`;
-                small.appendChild(badge);
-            }
+            renderImageDetails(small, path, {
+                meta: formatBytes(opt.finalBytes),
+                badge: opt.optimized ? `${opt.mode === 'lossless' ? 'lossless' : 'reduced'} from ${formatBytes(opt.originalBytes)}` : '',
+            });
         } else {
             getFileStat(path).then(stat => {
                 if (!stat?.exists || !Number.isFinite(stat.size)) return;
-                small.textContent = `${path} · ${formatBytes(stat.size)}`;
-                if (stat.size > OVERSIZED_IMAGE_BYTES) small.classList.add('image-size-warning');
-                else small.classList.add('image-size-ok');
+                renderImageDetails(small, path, { meta: formatBytes(stat.size) });
+                small.classList.toggle('image-size-warning', stat.size > OVERSIZED_IMAGE_BYTES);
+                small.classList.toggle('image-size-ok', stat.size <= OVERSIZED_IMAGE_BYTES);
             }).catch(() => {});
         }
     });
+}
+
+function appendBreakablePath(target, path) {
+    const parts = String(path || '').split(/([\/_-])/);
+    parts.forEach(part => {
+        if (!part) return;
+        target.appendChild(document.createTextNode(part));
+        if (part === '/' || part === '_' || part === '-') target.appendChild(document.createElement('wbr'));
+    });
+}
+
+function renderImageDetails(container, path, { meta = '', badge = '' } = {}) {
+    container.replaceChildren();
+    container.classList.remove('image-size-warning', 'image-size-ok');
+    const pathLine = document.createElement('span');
+    pathLine.className = 'image-path-line';
+    appendBreakablePath(pathLine, path);
+    container.appendChild(pathLine);
+    if (meta || badge) {
+        const metaLine = document.createElement('span');
+        metaLine.className = 'image-meta-line';
+        if (meta) {
+            const size = document.createElement('span');
+            size.className = 'image-size-label';
+            size.textContent = meta;
+            metaLine.appendChild(size);
+        }
+        if (badge) {
+            const badgeNode = document.createElement('span');
+            badgeNode.className = 'optimized-badge';
+            badgeNode.textContent = badge;
+            metaLine.appendChild(badgeNode);
+        }
+        container.appendChild(metaLine);
+    }
 }
 
 function imageActionButton(icon, title, onClick, disabled) {
@@ -3293,13 +3534,31 @@ function uiIconMarkup(name) {
 function toggleImageUsage(path, useOnMap) {
     const h = activeHotspot();
     if (!h) return;
+    const viewport = captureWorkspaceViewport();
     setImageUse(h, path, useOnMap);
     markDirty();
-    renderImagesList();
+    void renderImagesList();
+    refreshHotspotReviewState(h);
     renderHotspotList();
     renderCountryHealth();
     renderCountries();
+    restoreWorkspaceViewport(viewport);
     toast(useOnMap ? 'Image enabled for the public map.' : 'Image kept in the project but hidden from the public map.');
+}
+
+function captureWorkspaceViewport() {
+    if (!els.workspace) return null;
+    return { top: els.workspace.scrollTop, left: els.workspace.scrollLeft };
+}
+
+function restoreWorkspaceViewport(viewport) {
+    if (!viewport || !els.workspace) return;
+    requestAnimationFrame(() => {
+        const maxTop = Math.max(0, els.workspace.scrollHeight - els.workspace.clientHeight);
+        const maxLeft = Math.max(0, els.workspace.scrollWidth - els.workspace.clientWidth);
+        els.workspace.scrollTop = Math.min(viewport.top, maxTop);
+        els.workspace.scrollLeft = Math.min(viewport.left, maxLeft);
+    });
 }
 
 function moveImage(index, delta) {
@@ -3325,6 +3584,7 @@ function removeImagePath(path) {
     releaseObjectUrl(path);
     markDirty();
     renderImagesList();
+    refreshHotspotReviewState(h);
     renderHotspotList();
     renderCountryHealth();
     renderCountries();
@@ -3480,7 +3740,7 @@ function markDirty() {
     els.saveAll.disabled = false;
     els.saveAll.classList.add('is-dirty');
     els.reviewIndicator?.classList.add('warning');
-    els.saveAll.title = 'Unsaved changes — review before applying';
+    els.saveAll.title = 'Unsaved changes - review before applying';
 }
 
 function clearDirtyIndicator() {
