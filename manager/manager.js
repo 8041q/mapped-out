@@ -131,7 +131,7 @@ function enforceCountrySlugInput() {
 function setIssuesButtonState(level, count, title) {
     if (!els.validateAll || !els.issuesIndicator || !els.issuesCount) return;
     els.issuesIndicator.className = `status-dot ${level || 'neutral'}`;
-    els.issuesCount.textContent = String(count ?? '-');
+    els.issuesCount.textContent = String(count ?? '—');
     els.validateAll.title = title || 'Project issues';
 }
 
@@ -1484,10 +1484,10 @@ function renderRegionLabels(svg = previewSvg()) {
         const label = regionLabelText(region, mode, state.activeSlug);
         if (!label) return;
         const localSize = Math.min(box.width, box.height) * 0.28;
-        const readableFloor = shortSide / 88;
+        const readableFloor = shortSide / 72;
         const baseFontSize = clamp(localSize, readableFloor, shortSide / 46);
         const labelScale = clamp(4 / Math.max(3, label.length), 0.82, 1);
-        const fontSize = Math.max(readableFloor * 0.92, baseFontSize * labelScale);
+        const fontSize = Math.max(readableFloor, baseFontSize * labelScale);
         text.setAttribute('font-size', round(fontSize, 3));
         text.setAttribute('class', 'manager-region-label');
         text.textContent = label;
@@ -1668,7 +1668,7 @@ function updatePreviewMarkers() {
         group.dataset.index = String(index);
 
         const selected = index === state.mapHotspotIndex;
-        const markerRadius = selected ? radius * 1.28 : radius;
+        const markerRadius = radius;
         const circle = document.createElementNS('http://www.w3.org/2000/svg', 'circle');
         circle.setAttribute('cx', h.x);
         circle.setAttribute('cy', h.y);
@@ -2870,9 +2870,9 @@ async function validateCountryDeep(slug) {
             referencedImages.get(path).push(`${h.title || `Hotspot ${index + 1}`}${isInactive ? ' (unused)' : ''}`);
             const stat = state.fileStats.get(path);
             if (state.stagedDeletes.has(path)) {
-                issues.push({ level: 'error', hotspotIndex: index, text: `${h.title || `Hotspot ${index + 1}`}: image staged for deletion - ${path.split('/').pop()}.` });
+                issues.push({ level: 'error', hotspotIndex: index, text: `${h.title || `Hotspot ${index + 1}`}: image staged for deletion — ${path.split('/').pop()}.` });
             } else if (stat && stat.exists === false && !state.stagedWrites.has(path)) {
-                issues.push({ level: 'error', hotspotIndex: index, text: `${h.title || `Hotspot ${index + 1}`}: missing image - ${path.split('/').pop()}.` });
+                issues.push({ level: 'error', hotspotIndex: index, text: `${h.title || `Hotspot ${index + 1}`}: missing image — ${path.split('/').pop()}.` });
             } else if (!isInactive && Number.isFinite(stat?.size) && stat.size > OVERSIZED_IMAGE_BYTES) {
                 issues.push({ level: 'warning', hotspotIndex: index, text: `${h.title || `Hotspot ${index + 1}`}: ${path.split('/').pop()} is ${formatBytes(stat.size)} (over 4 MB).` });
             }
@@ -3740,7 +3740,7 @@ function markDirty() {
     els.saveAll.disabled = false;
     els.saveAll.classList.add('is-dirty');
     els.reviewIndicator?.classList.add('warning');
-    els.saveAll.title = 'Unsaved changes - review before applying';
+    els.saveAll.title = 'Unsaved changes — review before applying';
 }
 
 function clearDirtyIndicator() {

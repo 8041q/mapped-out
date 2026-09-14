@@ -355,7 +355,7 @@ code { font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; }
 .manager-hotspot-marker.ok { fill: #18794e; }
 .manager-hotspot-marker.warning { fill: #d88916; }
 .manager-hotspot-marker.error { fill: #c9382b; }
-.manager-hotspot-marker.selected { stroke: #14211e; stroke-width: 3; }
+.manager-hotspot-marker.selected { stroke: #000; stroke-width: 3; }
 .map-navigation { position: absolute; right: 14px; top: 14px; display: grid; gap: 5px; z-index: 8; }
 .map-editor-actions { display: grid; grid-template-columns: max-content max-content; align-items: center; gap: 9px; justify-content: end; }
 .map-label-mode { min-height: var(--control-height); display: inline-flex; align-items: center; gap: 2px; padding: 3px; border: 1px solid var(--border); border-radius: var(--control-radius); background: #f7f9f8; white-space: nowrap; }
