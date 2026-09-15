@@ -70,7 +70,7 @@ PNG files can try a lossless, pixel-preserving reduction. JPEG, WebP, and AVIF u
 
 Choose the `+` button beside Countries. Country name, country slug, and the country SVG are required. Slugs are normalized live to lowercase letters and hyphens; uppercase characters are converted immediately and numbers are removed. The public title and description can be edited but are optional.
 
-The manager reads the SVG geographic bounds, map size, and province/state IDs automatically. If the SVG provides width/height instead of a `viewBox`, the manager creates the equivalent preview view internally without changing the original SVG.
+The manager reads the SVG geographic bounds, map size, and province/state IDs automatically. If the SVG provides width/height instead of a `viewBox`, the manager creates the equivalent preview view internally without changing the original SVG. Region IDs inside the SVG must be unique; duplicate IDs are reported as a blocking map issue because hotspots cannot be matched reliably when two shapes share the same ID.
 
 For **Country Codes**, the preferred source is a `data-code`, `data-abbr`, or `data-label` attribute on each SVG region. Alphabetic suffixes such as `PH-NEC` are safe automatic fallbacks. If a map uses numeric/raw IDs that do not contain a human-facing abbreviation, add that country mapping to `manager/region-metadata.js`. The manager will flag unresolved codes for review rather than inventing an abbreviation.
 
@@ -100,9 +100,70 @@ When there are pending changes, the fixed-width **Review changes** control gains
 
 If you are unsure about an edit, do not choose **Apply changes**. Discard the pending changes and reopen the country from the repository.
 
-## After applying changes
+## What **Apply changes** writes to the repository
 
-The manager only updates files in your local repository. It does not run Git commands. After applying changes, review and commit the files, and push them normally. The existing GitHub Action continues to publish the public page and after a few minutes the new country url will be available.
+The manager edits the local repository only. It does not commit or push anything to GitHub. **Apply changes** writes the pending manager state to disk, and then you decide what to commit.
+
+### The file that is always updated
+
+`data/catalog.js` is rewritten every time **Apply changes** succeeds. This is the main content file for the public maps. It contains the country entries and their hotspot data, including titles, descriptions, coordinates, province/state assignments, image paths, map settings, and other saved hotspot information.
+
+**Always commit `data/catalog.js` after applying manager changes.** If you add or edit a hotspot but do not commit this file, that content will not appear on the website.
+
+### Country SVG files
+
+A country's map SVG normally lives at:
+
+`images/<country-slug>/<country-slug>.svg`
+
+For example:
+
+`images/thailand/thailand.svg`
+
+The manager writes an SVG file when you **create a new country** or choose **More → Replace country SVG**. Existing SVG files are not rewritten just because you edit hotspots.
+
+If a new or replacement SVG appears in the Git changes, commit it together with `data/catalog.js`. Do not delete a country's SVG while that country still exists in the catalog; the public map needs it to draw the country and place hotspots.
+
+### Hotspot image files
+
+Hotspot photos live under the country's image directory, usually in a generated hotspot folder such as:
+
+`images/thailand/ayutthaya_example_hospital/photo.jpg`
+
+Adding, reducing, replacing, or deleting photos can therefore create file changes under `images/<country-slug>/...`. Commit those changed image files together with `data/catalog.js`.
+
+A photo marked **Unused** is different from a deleted photo. Unused photos remain in the repository so they can be enabled again later. Do not delete an unused file unless you actually want to remove that image from the project.
+
+The catalog stores the image paths used by each hotspot. If `data/catalog.js` references an image that you forgot to commit, the website will have a broken/missing photo. If you commit a new image but forget the matching `data/catalog.js` change, the file may exist in the repository but the public map will not know to use it.
+
+### Region-code metadata
+
+`manager/region-metadata.js` is **not** automatically rewritten when you save normal country/hotspot edits. It only needs to be committed when you intentionally edit the region-label mappings, for example when a new SVG uses numeric/raw region IDs and needs human-facing Country Codes.
+
+This file affects the manager's editing labels, not the hotspot content itself.
+
+### Files you normally should not see changed
+
+Normal map-content editing should not require changes to `index.html`, `data/main.js`, the manager application files, or the launch/server files. Those are application/runtime files rather than country content. If they appear in Git changes after you only edited a country or hotspot, review the diff before committing.
+
+### What to commit in common cases
+
+| What you did | Files that should normally be committed |
+| --- | --- |
+| Edited hotspot text, coordinates, province/state, or Used/Unused image state | `data/catalog.js` |
+| Added a hotspot with new photos | `data/catalog.js` + the new files under `images/<country-slug>/...` |
+| Added photos to an existing hotspot | `data/catalog.js` + the new image files |
+| Reduced/replaced a photo | `data/catalog.js` + the changed image file(s) if their path/content changed |
+| Deleted a photo | `data/catalog.js` + the image deletion shown by Git |
+| Created a new country | `data/catalog.js` + `images/<country-slug>/<country-slug>.svg` + any added country images |
+| Replaced a country SVG | `data/catalog.js` + the replacement SVG |
+| Added/changed custom Country Code mappings | `manager/region-metadata.js` |
+
+### Before pushing
+
+After **Apply changes**, check your Git diff/status. At minimum, `data/catalog.js` should normally be present. Also include every SVG/image addition, modification, or deletion that belongs to the change. Commit those files and push normally; the existing GitHub Action then publishes the updated website.
+
+A useful rule is: **if the catalog points to a file, that file must exist in the committed repository too.** Keep each country's SVG and every image you still reference.
 
 ## Direct country links
 

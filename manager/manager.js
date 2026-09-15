@@ -111,7 +111,7 @@ function enforceCountrySlugInput() {
 function setIssuesButtonState(level, count, title) {
     if (!els.validateAll || !els.issuesIndicator || !els.issuesCount) return;
     els.issuesIndicator.className = `status-dot ${level || 'neutral'}`;
-    els.issuesCount.textContent = String(count ?? '—');
+    els.issuesCount.textContent = String(count ?? '-');
     els.validateAll.title = title || 'Project issues';
 }
 
@@ -752,7 +752,27 @@ function renderHotspotList() {
 
     const filtered = getFilteredHotspots(entry, query, filter);
     if (!filtered.length) {
-        els.hotspotList.innerHTML = '<div class="empty-state large">No hotspots match this search.</div>';
+        const empty = document.createElement('div');
+        empty.className = 'empty-state large hotspot-list-empty';
+        const message = document.createElement('span');
+        const filteredState = Boolean(query) || filter !== 'all';
+        message.textContent = filteredState ? 'No hotspots match the current filters.' : 'No hotspots yet.';
+        empty.appendChild(message);
+        if (filteredState) {
+            const clear = document.createElement('button');
+            clear.type = 'button';
+            clear.className = 'button button-secondary button-small';
+            clear.textContent = 'Clear filters';
+            clear.addEventListener('click', () => {
+                els.hotspotSearch.value = '';
+                els.hotspotFilter.value = 'all';
+                refreshCustomSelect(els.hotspotFilter);
+                renderHotspotList();
+                els.hotspotSearch.focus();
+            });
+            empty.appendChild(clear);
+        }
+        els.hotspotList.appendChild(empty);
         renderBulkToolbar(filtered);
         return;
     }
@@ -1008,13 +1028,19 @@ async function cleanupUnusedImages() {
     }
 }
 
-function selectHotspot(index, { updatePreview = true } = {}) {
+function selectHotspot(index, { updatePreview = true, revealInList = false } = {}) {
     state.activeHotspotIndex = index;
     // Selecting from the list/editor intentionally syncs the map highlight.
     state.mapHotspotIndex = index;
     renderHotspotList();
     renderEditor();
     if (updatePreview) updatePreviewMarkers();
+    if (revealInList) {
+        requestAnimationFrame(() => {
+            const activeRow = els.hotspotList?.querySelector('.hotspot-row.active');
+            activeRow?.scrollIntoView?.({ block: 'nearest', inline: 'nearest' });
+        });
+    }
 }
 
 function selectMapHotspot(index) {
@@ -1303,18 +1329,29 @@ function parseSvgMetadata(source) {
     }
 
     const regionNodes = Array.from(doc.querySelectorAll('path[id], polygon[id], polyline[id], rect[id], circle[id], ellipse[id]'));
-    const regions = regionNodes
+    const parsedRegions = regionNodes
         .map(node => ({
             id: node.id.trim(),
             name: (node.getAttribute('data-name') || node.getAttribute('title') || node.querySelector(':scope > title')?.textContent || node.id).trim(),
             code: (node.getAttribute('data-code') || node.getAttribute('data-abbr') || node.getAttribute('data-label') || '').trim(),
         }))
-        .filter(region => region.id && region.id !== 'hotspots-layer');
+        .filter(region => region.id && region.id !== 'hotspots-layer' && region.id !== 'manager-hotspot-layer' && region.id !== 'manager-region-label-layer');
+
+    const idCounts = new Map();
+    parsedRegions.forEach(region => idCounts.set(region.id, (idCounts.get(region.id) || 0) + 1));
+    const duplicateRegionIds = [...idCounts.entries()].filter(([, count]) => count > 1).map(([id]) => id);
+    const seenRegionIds = new Set();
+    const regions = parsedRegions.filter(region => {
+        if (seenRegionIds.has(region.id)) return false;
+        seenRegionIds.add(region.id);
+        return true;
+    });
 
     return {
         bounds,
         viewBox: { x: viewBox[0], y: viewBox[1], width: viewBox[2], height: viewBox[3] },
         regions,
+        duplicateRegionIds,
     };
 }
 
@@ -1666,7 +1703,13 @@ function updatePreviewMarkers() {
     const shortSide = Math.min(meta.viewBox.width, meta.viewBox.height);
     const radius = Math.max(shortSide / 75, 4);
 
-    entry.hotspots.forEach((h, index) => {
+    const markerOrder = entry.hotspots.map((_, index) => index);
+    if (Number.isInteger(state.mapHotspotIndex)) {
+        markerOrder.sort((a, b) => (a === state.mapHotspotIndex ? 1 : 0) - (b === state.mapHotspotIndex ? 1 : 0));
+    }
+
+    markerOrder.forEach(index => {
+        const h = entry.hotspots[index];
         if (!Number.isFinite(Number(h.x)) || !Number.isFinite(Number(h.y))) return;
         refreshProvinceMismatch(h);
         const status = hotspotValidationStatus(state.activeSlug, h, index);
@@ -2832,6 +2875,15 @@ function validateCountry(slug) {
     if (!meta) issues.push({ level: 'error', target: 'mapSvg', text: 'SVG has not been loaded.' });
     else {
         if (!meta.regions.length) issues.push({ level: 'error', target: 'mapSvg', text: 'No province/state IDs found in the SVG.' });
+        if (meta.duplicateRegionIds?.length) {
+            const sample = meta.duplicateRegionIds.slice(0, 5).join(', ');
+            const remaining = meta.duplicateRegionIds.length - Math.min(meta.duplicateRegionIds.length, 5);
+            issues.push({
+                level: 'error',
+                target: 'mapSvg',
+                text: `SVG region IDs must be unique. Duplicate ID${meta.duplicateRegionIds.length === 1 ? '' : 's'}: ${sample}${remaining ? ` +${remaining} more` : ''}.`,
+            });
+        }
         if (!entry.geoBounds) issues.push({ level: 'error', target: 'mapSvg', text: 'Geographic bounds are missing.' });
         const unresolvedCodes = unresolvedRegionCountryCodes(slug);
         if (unresolvedCodes.length) {
@@ -2895,9 +2947,9 @@ async function validateCountryDeep(slug) {
             referencedImages.get(path).push(`${h.title || `Hotspot ${index + 1}`}${isInactive ? ' (unused)' : ''}`);
             const stat = state.fileStats.get(path);
             if (state.stagedDeletes.has(path)) {
-                issues.push({ level: 'error', target: 'images', deep: true, hotspotIndex: index, hotspotText: `Image staged for deletion — ${path.split('/').pop()}.`, text: `${h.title || `Hotspot ${index + 1}`}: image staged for deletion — ${path.split('/').pop()}.` });
+                issues.push({ level: 'error', target: 'images', deep: true, hotspotIndex: index, hotspotText: `Image staged for deletion - ${path.split('/').pop()}.`, text: `${h.title || `Hotspot ${index + 1}`}: image staged for deletion - ${path.split('/').pop()}.` });
             } else if (stat && stat.exists === false && !state.stagedWrites.has(path)) {
-                issues.push({ level: 'error', target: 'images', deep: true, hotspotIndex: index, hotspotText: `Missing image — ${path.split('/').pop()}.`, text: `${h.title || `Hotspot ${index + 1}`}: missing image — ${path.split('/').pop()}.` });
+                issues.push({ level: 'error', target: 'images', deep: true, hotspotIndex: index, hotspotText: `Missing image - ${path.split('/').pop()}.`, text: `${h.title || `Hotspot ${index + 1}`}: missing image - ${path.split('/').pop()}.` });
             }
         }
     });
@@ -3108,6 +3160,16 @@ function applyValidationFilter(filter) {
         const visible = [...group.querySelectorAll('.validation-item[data-level]')].some(item => !item.classList.contains('hidden'));
         group.classList.toggle('hidden', !visible);
     });
+
+    els.validationScrollRegion?.querySelector('.validation-filter-empty')?.remove();
+    const visibleItems = [...els.validationResults.querySelectorAll('.validation-item[data-level]')]
+        .filter(item => !item.classList.contains('hidden'));
+    if (!visibleItems.length && wanted !== 'all' && els.validationScrollRegion) {
+        const empty = document.createElement('div');
+        empty.className = 'empty-state compact validation-filter-empty';
+        empty.textContent = wanted === 'error' ? 'No blocking issues.' : 'No review issues.';
+        els.validationScrollRegion.appendChild(empty);
+    }
     if (els.validationScrollRegion) els.validationScrollRegion.scrollTop = 0;
 }
 
@@ -3120,7 +3182,13 @@ async function openIssueTarget(issue) {
     }
 
     if (Number.isInteger(issue.hotspotIndex) && state.catalog[issue.slug]?.hotspots?.[issue.hotspotIndex]) {
-        selectHotspot(issue.hotspotIndex);
+        const visible = getFilteredHotspots().some(item => item.index === issue.hotspotIndex);
+        if (!visible) {
+            els.hotspotSearch.value = '';
+            els.hotspotFilter.value = 'all';
+            refreshCustomSelect(els.hotspotFilter);
+        }
+        selectHotspot(issue.hotspotIndex, { revealInList: true });
         await nextFrame();
         focusHotspotIssueTarget(issue.target || 'general');
         return;
@@ -3837,7 +3905,7 @@ function markDirty() {
     els.saveAll.disabled = false;
     els.saveAll.classList.add('is-dirty');
     els.reviewIndicator?.classList.add('warning');
-    els.saveAll.title = 'Unsaved changes — review before applying';
+    els.saveAll.title = 'Unsaved changes - review before applying';
 }
 
 function clearDirtyIndicator() {
